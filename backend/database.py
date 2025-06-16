@@ -1,7 +1,11 @@
 import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Database configuration
 DB_USER = os.getenv('DB_USER', 'postgres')
