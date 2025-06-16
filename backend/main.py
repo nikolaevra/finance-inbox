@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from auth import router as auth_router
+from backend.services.gmail_auth import router as auth_router
+from backend.services.gmail import fetch_gmail_emails
 
 # Create FastAPI app instance
 app = FastAPI(title="Finance Inbox API", version="1.0.0")
