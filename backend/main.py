@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from services.google_auth import router as auth_router
-from services.gmail import fetch_gmail_emails
+from apis.connect_gmail import router as gmail_router
 
 # Create FastAPI app instance
 app = FastAPI(title="Finance Inbox API", version="1.0.0")
@@ -15,7 +14,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth_router)
+# Include API routers
+app.include_router(gmail_router, prefix="/gmail", tags=["gmail"])
 
 @app.get("/")
 async def root():
