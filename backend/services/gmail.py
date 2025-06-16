@@ -1,5 +1,5 @@
 from googleapiclient.discovery import build
-from backend.services.google_auth import TOKENS
+from services.google_auth import TOKENS
 from fastapi import APIRouter
 import os
 
