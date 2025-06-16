@@ -7,8 +7,8 @@ from sqlalchemy.ext.declarative import declarative_base
 # Load environment variables from .env file
 load_dotenv()
 
-# Database configuration
-DB_USER = os.getenv('DB_USER', 'postgres')
+# Database configuration - use system username for Homebrew PostgreSQL
+DB_USER = os.getenv('DB_USER', os.getenv('USER', 'postgres'))
 DB_PASSWORD = os.getenv('DB_PASSWORD', '')
 DB_HOST = os.getenv('DB_HOST', 'localhost')
 DB_PORT = os.getenv('DB_PORT', '5432')
