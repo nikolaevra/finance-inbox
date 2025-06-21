@@ -1,6 +1,6 @@
 # Finance Inbox Backend
 
-FastAPI backend for the Finance Inbox application with PostgreSQL database, Alembic migrations, and Gmail integration.
+FastAPI backend for the Finance Inbox application with a Supabase database, Alembic migrations, and Gmail integration.
 
 ## 🏗️ Architecture
 
@@ -23,7 +23,7 @@ backend/
 ## 🛠️ Prerequisites
 
 - **Python 3.9+**
-- **PostgreSQL** (installed via Homebrew on macOS)
+- **Supabase account**
 - **pip** (Python package manager)
 
 ## 📦 Installation
@@ -36,27 +36,18 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 ### 2. Install Dependencies
 ```bash
-pip install fastapi uvicorn sqlalchemy alembic psycopg2-binary python-dotenv
+pip install fastapi uvicorn sqlalchemy alembic python-dotenv supabase
 ```
 
-### 3. Database Setup
-```bash
-# Create postgres user (if needed)
-createuser -s postgres
-
-# Create database
-createdb finance_inbox
-```
+### 3. Supabase Configuration
+Create a project in Supabase and note the API URL and service role key.
 
 ### 4. Environment Configuration
 Create a `.env` file in the backend directory:
 ```bash
-# Database Configuration
-DB_USER=nikolaevra
-DB_PASSWORD=your_password
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=finance_inbox
+# Supabase Configuration
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_service_role_key
 
 # Other configuration
 DEBUG=True
@@ -69,11 +60,8 @@ DEBUG=True
 ./run.sh
 ```
 
-This script will:
-- ✅ Start PostgreSQL automatically
-- ✅ Create the database if it doesn't exist
-- ✅ Run database migrations
-- ✅ Start the FastAPI server on http://localhost:8000
+This script will start the FastAPI server on http://localhost:8000 using your
+Supabase configuration.
 
 ### Option 2: Manual Startup
 ```bash
@@ -108,11 +96,9 @@ python3 -m alembic downgrade <revision_id>
 ```
 
 ### Database Connection
-The application uses PostgreSQL with the following configuration:
-- **Host**: localhost (configurable via DB_HOST)
-- **Port**: 5432 (configurable via DB_PORT)
-- **Database**: finance_inbox (configurable via DB_NAME)
-- **User**: nikolaevra (configurable via DB_USER)
+The application uses Supabase with the following configuration:
+- **Supabase URL**: configured via `SUPABASE_URL`
+- **API Key**: configured via `SUPABASE_KEY`
 
 ## 🔧 API Endpoints
 
@@ -144,11 +130,8 @@ The application uses PostgreSQL with the following configuration:
 
 ### Environment Variables
 The application uses the following environment variables:
-- `DB_USER`: PostgreSQL username
-- `DB_PASSWORD`: PostgreSQL password
-- `DB_HOST`: PostgreSQL host
-- `DB_PORT`: PostgreSQL port
-- `DB_NAME`: PostgreSQL database name
+- `SUPABASE_URL`: URL to your Supabase project
+- `SUPABASE_KEY`: API key for the project
 
 ## 📝 API Documentation
 
@@ -158,17 +141,9 @@ Once the server is running, visit:
 
 ## 🆘 Troubleshooting
 
-### PostgreSQL Issues
-```bash
-# Check if PostgreSQL is running
-brew services list
-
-# Start PostgreSQL
-brew services start postgresql@14
-
-# Check connection
-pg_isready
-```
+### Supabase Issues
+Check your project status in the Supabase dashboard and ensure your credentials
+are correct.
 
 ### Migration Issues
 ```bash
