@@ -8,7 +8,7 @@ A comprehensive financial management application that helps you organize and pro
 - **Invoice Processing**: Automatically extract and categorize invoices
 - **User Management**: Secure authentication with Clerk
 - **Business Organization**: Support for multiple businesses and users
-- **Database Management**: PostgreSQL with Alembic migrations
+- **Database Management**: Supabase (hosted PostgreSQL) with Alembic migrations
 - **Modern Frontend**: React with Vite and Tailwind CSS
 
 ## 🏗️ Architecture
@@ -33,7 +33,7 @@ finance-inbox/
 
 - **Python 3.9+**
 - **Node.js 16+**
-- **PostgreSQL** (installed via Homebrew on macOS)
+- **Supabase account**
 - **Git**
 
 ## 📦 Installation
@@ -54,19 +54,13 @@ python3 -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install dependencies
-pip install fastapi uvicorn sqlalchemy alembic psycopg2-binary python-dotenv
+pip install fastapi uvicorn sqlalchemy alembic psycopg2-binary python-dotenv supabase
 
 # Create .env file
 cat > .env << EOF
-DB_USER=nikolaevra
-DB_PASSWORD=your_password
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=finance_inbox
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_anon_or_service_role_key
 EOF
-
-# Create postgres user (if needed)
-createuser -s postgres
 ```
 
 ### 3. Frontend Setup
@@ -88,11 +82,8 @@ cd backend
 ./run.sh
 ```
 
-This script will:
-- Start PostgreSQL automatically
-- Create the database if it doesn't exist
-- Run database migrations
-- Start the FastAPI server on http://localhost:8000
+This script will start the FastAPI server on http://localhost:8000 using your
+Supabase configuration.
 
 #### Frontend
 ```bash
@@ -138,12 +129,9 @@ python3 -m alembic revision --autogenerate -m "Description of changes"
 Create a `.env` file in the `backend/` directory:
 
 ```bash
-# Database Configuration
-DB_USER=nikolaevra
-DB_PASSWORD=your_password
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=finance_inbox
+# Supabase Configuration
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_service_role_key
 
 # Other configuration
 DEBUG=True
@@ -191,10 +179,9 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 🆘 Troubleshooting
 
-### PostgreSQL Issues
-- Ensure PostgreSQL is running: `brew services list`
-- Start PostgreSQL: `brew services start postgresql@14`
-- Create database: `createdb finance_inbox`
+### Supabase Issues
+- Ensure your `SUPABASE_URL` and `SUPABASE_KEY` are correct
+- Check the Supabase dashboard for project status
 
 ### Port Conflicts
 - Backend runs on port 8000 by default
