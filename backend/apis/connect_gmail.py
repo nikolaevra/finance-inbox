@@ -11,11 +11,36 @@ DEMO_USER_ID = "3c1415b3-245f-4140-a70b-306e18549ab1"  # This would come from yo
 
 
 @router.get("/fetch-emails")
-def get_emails():
-    """Fetch user's Gmail emails"""
+def get_emails(max_results: int = 10):
+    """Fetch user's Gmail emails with full content"""
     google_service = GoogleService(user_id=DEMO_USER_ID)
-    emails = google_service.fetch_gmail_emails()
-    return emails
+    emails = google_service.fetch_gmail_emails(max_results=max_results)
+    return {"emails": emails, "count": len(emails)}
+
+@router.get("/email/{email_id}")
+def get_single_email(email_id: str):
+    """Get detailed information for a single email from Gmail"""
+    google_service = GoogleService(user_id=DEMO_USER_ID)
+    email = google_service.get_single_email(email_id)
+    return email
+
+@router.get("/emails/stored")
+def get_stored_emails(limit: int = 20):
+    """Get emails from database (previously fetched and stored)"""
+    google_service = GoogleService(user_id=DEMO_USER_ID)
+    emails = google_service._get_emails_from_db(limit=limit)
+    return {"emails": emails, "count": len(emails), "source": "database"}
+
+@router.post("/emails/sync")
+def sync_emails(max_results: int = 50):
+    """Fetch emails from Gmail and store them in database"""
+    google_service = GoogleService(user_id=DEMO_USER_ID)
+    emails = google_service.fetch_gmail_emails(max_results=max_results)
+    return {
+        "message": f"Successfully synced {len(emails)} emails",
+        "emails_synced": len(emails),
+        "source": "gmail_api"
+    }
 
 @router.get("/google-auth")
 def login():
