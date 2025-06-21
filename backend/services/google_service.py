@@ -316,6 +316,89 @@ class GoogleService:
             logger.error(f"❌ Error retrieving emails from database for user {self.user_id}: {str(e)}")
             return []
 
+    def get_inbox_emails(self, limit: int = 50, offset: int = 0) -> List[dict]:
+        """Get inbox emails with pagination and enhanced formatting"""
+        if not self.user_id:
+            logger.warning("❌ No user_id provided, cannot retrieve inbox")
+            return []
+        
+        try:
+            logger.info(f"📥 Retrieving inbox for user {self.user_id} (limit: {limit}, offset: {offset})")
+            
+            # Query emails with pagination, ordered by date (newest first)
+            result = self.supabase.table("emails").select(
+                "id, gmail_id, subject, from_email, to_email, date_sent, snippet, "
+                "labels, has_attachments, size_estimate, is_processed, created_at"
+            ).eq("user_id", str(self.user_id)).order("date_sent", desc=True).range(offset, offset + limit - 1).execute()
+            
+            if result.data:
+                # Format emails for inbox display
+                formatted_emails = []
+                for email in result.data:
+                    formatted_email = self._format_inbox_email(email)
+                    formatted_emails.append(formatted_email)
+                
+                logger.info(f"✅ Retrieved {len(formatted_emails)} emails for inbox")
+                return formatted_emails
+            else:
+                logger.info(f"📭 No emails found in inbox for user {self.user_id}")
+                return []
+                
+        except Exception as e:
+            logger.error(f"❌ Error retrieving inbox for user {self.user_id}: {str(e)}")
+            return []
+
+    def _format_inbox_email(self, email: dict) -> dict:
+        """Format email for inbox display"""
+        # Parse date for better display
+        date_sent = email.get('date_sent')
+        formatted_date = None
+        if date_sent:
+            try:
+                from datetime import datetime
+                if isinstance(date_sent, str):
+                    parsed_date = datetime.fromisoformat(date_sent.replace('Z', '+00:00'))
+                    formatted_date = parsed_date.strftime('%Y-%m-%d %H:%M')
+                else:
+                    formatted_date = date_sent.strftime('%Y-%m-%d %H:%M')
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to format date {date_sent}: {str(e)}")
+                formatted_date = str(date_sent) if date_sent else None
+
+        # Extract sender name from email address
+        from_email = email.get('from_email', '')
+        sender_name = from_email
+        if '<' in from_email and '>' in from_email:
+            # Extract name from "Name <email@domain.com>" format
+            sender_name = from_email.split('<')[0].strip().strip('"')
+            if not sender_name:
+                sender_name = from_email.split('<')[1].split('>')[0]
+        
+        # Determine email status
+        labels = email.get('labels', [])
+        is_unread = 'UNREAD' in labels
+        is_important = 'IMPORTANT' in labels
+        is_starred = 'STARRED' in labels
+        
+        return {
+            'id': email.get('id'),
+            'gmail_id': email.get('gmail_id'),
+            'subject': email.get('subject') or '(No Subject)',
+            'sender': sender_name,
+            'from_email': from_email,
+            'date': formatted_date,
+            'date_sent': date_sent,
+            'snippet': email.get('snippet', '')[:150] + '...' if email.get('snippet', '') else '',
+            'labels': labels,
+            'has_attachments': email.get('has_attachments', False),
+            'size_estimate': email.get('size_estimate'),
+            'is_unread': is_unread,
+            'is_important': is_important,
+            'is_starred': is_starred,
+            'is_processed': email.get('is_processed', False),
+            'created_at': email.get('created_at')
+        }
+
     def get_authorization_url(self) -> str:
         """Generate Google OAuth authorization URL"""
         flow = Flow.from_client_config(

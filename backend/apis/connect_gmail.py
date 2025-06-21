@@ -24,6 +24,19 @@ def get_single_email(email_id: str):
     email = google_service.get_single_email(email_id)
     return email
 
+@router.get("/inbox")
+def get_inbox(limit: int = 50, offset: int = 0):
+    """Get user's inbox - all stored emails from database"""
+    google_service = GoogleService(user_id=DEMO_USER_ID)
+    emails = google_service.get_inbox_emails(limit=limit, offset=offset)
+    return {
+        "inbox": emails,
+        "count": len(emails),
+        "limit": limit,
+        "offset": offset,
+        "source": "database"
+    }
+
 @router.get("/emails/stored")
 def get_stored_emails(limit: int = 20):
     """Get emails from database (previously fetched and stored)"""
