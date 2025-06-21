@@ -2,6 +2,7 @@
 backend/node_modules
 backend/.venv
 backend/.env
+backend/.vscode
 frontend/node_modules
 frontend/.venv
 frontend/.env

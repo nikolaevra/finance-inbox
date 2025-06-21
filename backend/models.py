@@ -1,26 +1,17 @@
-import uuid
-from sqlalchemy import Column, String, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
 from datetime import datetime
-from database import Base
+from typing import Optional
+from uuid import UUID
+from pydantic import BaseModel
 
-class User(Base):
-    __tablename__ = "users"
+class User(BaseModel):
+    id: Optional[UUID] = None
+    clerk_user_id: str
+    email: str
+    created_at: Optional[datetime] = None
+    business_id: Optional[UUID] = None
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    clerk_user_id = Column(String, unique=True, nullable=False)  # from Clerk
-    email = Column(String, unique=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+class Business(BaseModel):
+    id: Optional[UUID] = None
+    name: str
+    created_at: Optional[datetime] = None
 
-    business_id = Column(UUID(as_uuid=True), ForeignKey("businesses.id"), nullable=True)
-    business = relationship("Business", back_populates="users")
-
-class Business(Base):
-    __tablename__ = "businesses"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    users = relationship("User", back_populates="business")
