@@ -15,7 +15,7 @@ app.add_middleware(
 )
 
 # Include API routers
-app.include_router(gmail_router, prefix="/gmail", tags=["gmail"])
+app.include_router(gmail_router)
 
 @app.get("/")
 async def root():

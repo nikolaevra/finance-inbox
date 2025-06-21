@@ -15,3 +15,14 @@ class Business(BaseModel):
     name: str
     created_at: Optional[datetime] = None
 
+class OAuthToken(BaseModel):
+    id: Optional[UUID] = None
+    user_id: UUID
+    provider: str = "google"
+    access_token: str
+    refresh_token: Optional[str] = None
+    token_type: str = "Bearer"
+    expires_at: datetime
+    scope: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
