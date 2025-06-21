@@ -10,8 +10,13 @@ alembic==1.12.1
 # Supabase client
 supabase==2.3.0
 
+# Authentication and JWT
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
 # Pydantic for data validation
 pydantic==2.5.0
+email-validator==2.2.0
 
 # Environment variables
 python-dotenv==1.0.0

@@ -1,29 +1,33 @@
 # Finance Inbox Backend
 
-FastAPI backend for the Finance Inbox application with a Supabase database, Alembic migrations, and Gmail integration.
+FastAPI backend for the Finance Inbox application with Supabase authentication, database integration, and Gmail connectivity.
 
 ## 🏗️ Architecture
 
 ```
 backend/
 ├── services/              # Business logic services
-│   ├── google_auth.py    # Google OAuth authentication
-│   ├── gmail.py          # Gmail API integration
+│   ├── auth_service.py   # Supabase authentication service
+│   ├── google_service.py # Google OAuth & Gmail integration
 │   └── __init__.py
-├── auth/                 # Authentication modules
-├── migrations/           # Alembic database migrations
-├── models.py            # SQLAlchemy database models
-├── database.py          # Database configuration
-├── main.py             # FastAPI application entry point
-├── run.sh              # Automated startup script
-├── alembic.ini         # Alembic configuration
-└── README.md           # This file
+├── apis/                 # API route handlers
+│   ├── auth.py          # Authentication endpoints
+│   ├── connect_gmail.py # Gmail API endpoints
+│   └── __init__.py
+├── supabase/            # Database migrations
+│   └── migrations/      # SQL migration files
+├── models.py           # SQLAlchemy database models
+├── database.py         # Supabase client configuration
+├── main.py            # FastAPI application entry point
+├── run.sh             # Automated startup script
+└── README.md          # This file
 ```
 
 ## 🛠️ Prerequisites
 
 - **Python 3.9+**
-- **Supabase account**
+- **Supabase account with Auth enabled**
+- **Google Cloud Console project with Gmail API enabled**
 - **pip** (Python package manager)
 
 ## 📦 Installation
@@ -36,11 +40,16 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 ### 2. Install Dependencies
 ```bash
-pip install fastapi uvicorn sqlalchemy alembic python-dotenv supabase
+pip install -r requirements.txt
 ```
 
 ### 3. Supabase Configuration
-Create a project in Supabase and note the API URL and service role key.
+1. Create a project in Supabase
+2. Enable Authentication in your Supabase project
+3. Note down the following from your project settings:
+   - Project URL
+   - Service role key
+   - JWT Secret (from API settings)
 
 ### 4. Environment Configuration
 Create a `.env` file in the backend directory:
@@ -48,10 +57,58 @@ Create a `.env` file in the backend directory:
 # Supabase Configuration
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your_service_role_key
+SUPABASE_JWT_SECRET=your_jwt_secret
 
 # Other configuration
 DEBUG=True
 ```
+
+**⚠️ Important**: The `SUPABASE_JWT_SECRET` is required for token verification and can be found in your Supabase project settings under API → JWT Settings.
+
+## 🔐 Authentication System
+
+The application uses **Supabase Auth** with a streamlined client-side approach:
+
+### Features
+- **Client-Side Authentication**: Frontend uses Supabase client for signup/signin
+- **JWT Token Verification**: Backend verifies JWT tokens for protected routes
+- **Automatic Profile Creation**: Database trigger creates user profiles on signup
+- **User Data Isolation**: All data isolated per authenticated user
+
+### Authentication Flow
+```
+1. Frontend → Supabase Auth (signup/signin)
+2. Supabase → Returns JWT token to frontend
+3. Database trigger → Automatically creates user profile
+4. Frontend → Includes JWT in API requests
+5. Backend → Verifies JWT and processes requests
+```
+
+### API Endpoints
+
+#### Authentication Endpoints
+- `POST /auth/login` - Login with email/password (backup endpoint)
+- `POST /auth/refresh` - Refresh access token
+- `POST /auth/logout` - Logout current user
+- `GET /auth/me` - Get current user info
+- `GET /auth/profile` - Get user profile details
+
+#### Protected Endpoints (Auth Required)
+All Gmail endpoints require a valid JWT token in the Authorization header:
+```bash
+Authorization: Bearer <your_jwt_token>
+```
+
+- `GET /inbox` - Get user's emails
+- `POST /emails/sync` - Sync Gmail emails
+- All Gmail integration endpoints
+
+### Frontend Integration
+The frontend:
+1. Uses Supabase client for authentication
+2. Stores JWT tokens securely
+3. Includes tokens in API requests: `Authorization: Bearer <token>`
+4. Handles token refresh automatically
 
 ## 🚀 Running the Application
 
@@ -60,45 +117,40 @@ DEBUG=True
 ./run.sh
 ```
 
-This script will start the FastAPI server on http://localhost:8000 using your
-Supabase configuration.
-
 ### Option 2: Manual Startup
 ```bash
 # Activate virtual environment
 source .venv/bin/activate
 
-# Run migrations
-python3 -m alembic upgrade head
-
 # Start the server
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+The server will start on http://localhost:8000
+
 ## 🗄️ Database Management
 
-### Models
-The application uses SQLAlchemy ORM with the following models:
+### Database Schema
+The application uses Supabase with the following tables:
 
-- **User**: User accounts with Clerk integration
-- **Business**: Business entities that users belong to
+- **auth.users**: Supabase managed user accounts
+- **users**: Extended user profiles (auto-created via trigger)
+- **businesses**: Business entities
+- **oauth_tokens**: Google OAuth tokens per user
+- **emails**: Stored email data
+- **email_attachments**: Email attachment metadata
 
-### Running Migrations
-```bash
-# Apply all pending migrations
-python3 -m alembic upgrade head
+### Automatic Profile Creation
+When users sign up through Supabase Auth:
+1. ✅ Supabase creates record in `auth.users`
+2. ✅ Database trigger automatically creates profile in `public.users`
+3. ✅ User can immediately access protected endpoints
 
-# Create a new migration
-python3 -m alembic revision --autogenerate -m "Description of changes"
-
-# Downgrade to a specific revision
-python3 -m alembic downgrade <revision_id>
-```
-
-### Database Connection
-The application uses Supabase with the following configuration:
-- **Supabase URL**: configured via `SUPABASE_URL`
-- **API Key**: configured via `SUPABASE_KEY`
+### Migrations
+Database migrations are managed through Supabase:
+1. Navigate to your Supabase project
+2. Go to SQL Editor
+3. Run migration files from `/supabase/migrations/`
 
 ## 🔧 API Endpoints
 
@@ -106,32 +158,51 @@ The application uses Supabase with the following configuration:
 - `GET /` - Root endpoint
 - `GET /health` - Health check
 
-### Authentication (via services)
-- Google OAuth integration
-- Clerk user management
+### Authentication
+- `POST /auth/login` - Login (backup endpoint)
+- `POST /auth/refresh` - Refresh token
+- `POST /auth/logout` - Logout
+- `GET /auth/me` - Get current user
 
-### Gmail Integration
-- Email fetching and processing
-- Invoice extraction
+### Gmail Integration (Authenticated)
+- `GET /inbox` - Get stored emails
+- `POST /emails/sync` - Sync from Gmail
+- `GET /google-auth` - Start Google OAuth
+- `GET /google-auth/callback` - OAuth callback
+- `GET /google-auth/status` - Check OAuth status
 
 ## 🧪 Development
 
-### Code Structure
-- **`main.py`**: FastAPI application setup and routing
-- **`models.py`**: SQLAlchemy database models
-- **`database.py`**: Database connection and session management
-- **`services/`**: Business logic and external API integrations
+### Testing Authentication
+Since the frontend handles authentication, test by:
+1. Using the frontend to sign up/login
+2. Getting the JWT token from browser dev tools
+3. Using the token in API requests:
+   ```bash
+   curl -H "Authorization: Bearer <your_token>" http://localhost:8000/inbox
+   ```
 
-### Adding New Endpoints
-1. Create your route in `main.py` or a separate router file
-2. Add any required models to `models.py`
-3. Create migrations if database changes are needed
-4. Update this README with new endpoint documentation
+### Code Structure
+- **`services/auth_service.py`**: JWT token verification and user management
+- **`apis/auth.py`**: Authentication route handlers  
+- **`main.py`**: FastAPI app with auth middleware
+- **`database.py`**: Supabase client configuration
+
+### Adding Protected Endpoints
+```python
+from services.auth_service import get_current_user
+
+@router.get("/protected-endpoint")
+async def protected_route(current_user: dict = Depends(get_current_user)):
+    user_id = current_user["user_id"]
+    # Your protected logic here
+```
 
 ### Environment Variables
-The application uses the following environment variables:
-- `SUPABASE_URL`: URL to your Supabase project
-- `SUPABASE_KEY`: API key for the project
+Required environment variables:
+- `SUPABASE_URL`: Your Supabase project URL
+- `SUPABASE_KEY`: Service role key for database operations
+- `SUPABASE_JWT_SECRET`: JWT secret for token verification
 
 ## 📝 API Documentation
 
@@ -139,54 +210,45 @@ Once the server is running, visit:
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 
+## 🔒 Security Features
+
+- **JWT Token Authentication**: Secure user authentication
+- **Database Triggers**: Automatic user profile creation
+- **Row Level Security**: Database-level data isolation
+- **User Data Isolation**: All data scoped to authenticated users
+- **CORS Configuration**: Configured for frontend integration
+- **Environment Variables**: Sensitive data in environment variables
+
 ## 🆘 Troubleshooting
 
-### Supabase Issues
-Check your project status in the Supabase dashboard and ensure your credentials
-are correct.
+### Authentication Issues
+- Verify `SUPABASE_JWT_SECRET` is correct
+- Check Supabase Auth is enabled in your project
+- Ensure tokens are included in request headers
 
-### Migration Issues
-```bash
-# Reset migrations (DANGER: This will delete all data)
-python3 -m alembic downgrade base
-python3 -m alembic upgrade head
-```
+### Profile Issues
+- Check database trigger is working: `public.handle_new_user()`
+- Verify RLS policies are not blocking profile creation
+- Check migration was applied successfully
 
-### Port Conflicts
-If port 8000 is in use, change it in the uvicorn command:
-```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8001
-```
+### Supabase Connection Issues
+- Verify your Supabase project URL and keys
+- Check project status in Supabase dashboard
+- Ensure service role key has proper permissions
 
-### Virtual Environment Issues
-```bash
-# Recreate virtual environment
-rm -rf .venv
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt  # if available
-```
-
-## 🔒 Security
-
-- Environment variables for sensitive configuration
-- SQLAlchemy parameterized queries to prevent SQL injection
-- CORS middleware configured for frontend integration
-
-## 📊 Monitoring
-
-- Health check endpoint for monitoring
-- Structured logging (can be enhanced)
-- Error handling with appropriate HTTP status codes
+### Gmail Integration Issues
+- Verify Google Cloud Console setup
+- Check OAuth credentials configuration
+- Ensure Gmail API is enabled
 
 ## 🚀 Deployment
 
 For production deployment:
-1. Set `DEBUG=False` in environment variables
-2. Use a production WSGI server (Gunicorn)
-3. Configure proper CORS origins
+1. Set proper environment variables
+2. Configure CORS for your frontend domain
+3. Use HTTPS for security
 4. Set up proper database credentials
-5. Enable HTTPS
+5. Enable rate limiting
 
 ## 📞 Support
 
@@ -194,4 +256,4 @@ For backend-specific issues:
 1. Check the troubleshooting section above
 2. Review the API documentation at `/docs`
 3. Check the logs for error messages
-4. Create an issue in the repository 
+4. Verify environment variable configuration 

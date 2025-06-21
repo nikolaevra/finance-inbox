@@ -5,10 +5,14 @@ from pydantic import BaseModel
 
 class User(BaseModel):
     id: Optional[UUID] = None
-    clerk_user_id: str
+    supabase_user_id: str  # This connects to auth.users.id in Supabase
     email: str
     created_at: Optional[datetime] = None
     business_id: Optional[UUID] = None
+    # Additional profile fields
+    full_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    last_sign_in_at: Optional[datetime] = None
 
 class Business(BaseModel):
     id: Optional[UUID] = None

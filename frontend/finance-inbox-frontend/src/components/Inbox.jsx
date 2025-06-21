@@ -4,6 +4,7 @@ import { Card } from './ui/card'
 import { RefreshCw, Settings, Search } from 'lucide-react'
 import EmailList from './EmailList'
 import EmailViewer from './EmailViewer'
+import { useAuth } from '../contexts/AuthContext'
 import axios from 'axios'
 
 const Inbox = () => {
@@ -11,6 +12,8 @@ const Inbox = () => {
   const [selectedEmail, setSelectedEmail] = useState(null)
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  
+  const { getAuthHeaders } = useAuth()
 
   useEffect(() => {
     loadEmails()
@@ -19,10 +22,15 @@ const Inbox = () => {
   const loadEmails = async () => {
     setLoading(true)
     try {
-      const response = await axios.get('http://localhost:8000/inbox?limit=50')
+      const response = await axios.get('http://localhost:8000/inbox?limit=50', {
+        headers: getAuthHeaders()
+      })
       setEmails(response.data.inbox || [])
     } catch (error) {
       console.error('Error loading emails:', error)
+      if (error.response?.status === 401) {
+        console.error('Authentication failed - please login again')
+      }
     } finally {
       setLoading(false)
     }
@@ -31,11 +39,16 @@ const Inbox = () => {
   const syncEmails = async () => {
     setSyncing(true)
     try {
-      await axios.post('http://localhost:8000/emails/sync?max_results=20')
+      await axios.post('http://localhost:8000/emails/sync?max_results=20', {}, {
+        headers: getAuthHeaders()
+      })
       // Reload emails after sync
       await loadEmails()
     } catch (error) {
       console.error('Error syncing emails:', error)
+      if (error.response?.status === 401) {
+        console.error('Authentication failed - please login again')
+      }
     } finally {
       setSyncing(false)
     }
@@ -46,12 +59,12 @@ const Inbox = () => {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-background">
+    <div className="h-full flex flex-col bg-background">
       {/* Header */}
       <div className="border-b px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <h1 className="text-2xl font-bold">Finance Inbox</h1>
+            <h1 className="text-2xl font-bold">Inbox</h1>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -78,9 +91,6 @@ const Inbox = () => {
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon">
               <Search className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon">
-              <Settings className="h-4 w-4" />
             </Button>
           </div>
         </div>
