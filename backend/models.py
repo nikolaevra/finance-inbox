@@ -92,7 +92,6 @@ class Connection(BaseModel):
 
 class OAuthToken(BaseModel):
     id: Optional[UUID] = None
-    user_id: UUID
     provider: str = "google"
     access_token: str
     refresh_token: Optional[str] = None

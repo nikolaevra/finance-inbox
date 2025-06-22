@@ -20,7 +20,7 @@ const Settings = () => {
       setLoading(true)
       setError(null)
       
-      const response = await axios.get(API_ENDPOINTS.INBOX.CONNECTIONS, {
+      const response = await axios.get(API_ENDPOINTS.SETTINGS.CONNECTIONS, {
         headers: getAuthHeaders()
       })
       
@@ -93,7 +93,7 @@ const Settings = () => {
   const handleDisconnectGmail = async () => {
     try {
       const response = await axios.post(
-        API_ENDPOINTS.INBOX.DISCONNECT('gmail'),
+        API_ENDPOINTS.SETTINGS.DISCONNECT('gmail'),
         {},
         { headers: getAuthHeaders() }
       )

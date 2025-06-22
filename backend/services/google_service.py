@@ -104,23 +104,25 @@ class GoogleService:
             """Recursively extract data from message parts"""
             mime_type = part.get('mimeType', '')
             
-            if mime_type == 'text/plain':
+            if mime_type == 'text/plain' and not body['text']:
                 data = part.get('body', {}).get('data', '')
                 if data:
                     import base64
                     try:
-                        decoded = base64.urlsafe_b64decode(data).decode('utf-8')
+                        decoded = base64.urlsafe_b64decode(data + '===').decode('utf-8')
                         body['text'] = decoded
+                        logger.debug(f"✅ Extracted plain text body ({len(decoded)} chars)")
                     except Exception as e:
                         logger.warning(f"⚠️ Failed to decode plain text body: {str(e)}")
                         
-            elif mime_type == 'text/html':
+            elif mime_type == 'text/html' and not body['html']:
                 data = part.get('body', {}).get('data', '')
                 if data:
                     import base64
                     try:
-                        decoded = base64.urlsafe_b64decode(data).decode('utf-8')
+                        decoded = base64.urlsafe_b64decode(data + '===').decode('utf-8')
                         body['html'] = decoded
+                        logger.debug(f"✅ Extracted HTML body ({len(decoded)} chars)")
                     except Exception as e:
                         logger.warning(f"⚠️ Failed to decode HTML body: {str(e)}")
             
@@ -136,6 +138,11 @@ class GoogleService:
         else:
             # Single part message
             extract_part_data(payload)
+        
+        # Log what we found
+        has_text = bool(body['text'])
+        has_html = bool(body['html'])
+        logger.debug(f"📝 Body extraction complete - Text: {'✅' if has_text else '❌'}, HTML: {'✅' if has_html else '❌'}")
         
         return body
 
@@ -489,6 +496,33 @@ class GoogleService:
             'created_at': email.get('created_at')
         }
 
+    def _format_full_email(self, email: dict) -> dict:
+        """Format email for full display including body content"""
+        # Start with inbox formatting
+        formatted_email = self._format_inbox_email(email)
+        
+        # Add body content for full email view
+        body_text = email.get('body_text', '')
+        body_html = email.get('body_html', '')
+        
+        # Format body object to match frontend expectations
+        formatted_email['body'] = {
+            'text': body_text,
+            'html': body_html
+        }
+        
+        # Add additional fields for full email view
+        formatted_email.update({
+            'to_email': email.get('to_email'),
+            'cc_email': email.get('cc_email'),
+            'bcc_email': email.get('bcc_email'),
+            'reply_to': email.get('reply_to'),
+            'thread_id': email.get('thread_id'),
+            'full_snippet': email.get('snippet', ''),  # Full snippet without truncation
+        })
+        
+        return formatted_email
+
     def get_authorization_url(self, state: str = None) -> str:
         """Generate Google OAuth authorization URL"""
         flow = Flow.from_client_config(
@@ -774,11 +808,11 @@ class GoogleService:
             "expires_in_seconds": int((expires_at - now).total_seconds()),
             "needs_refresh": now >= (expires_at - timedelta(minutes=5)),
             "provider": tokens.provider,
-            "user_id": str(tokens.user_id)
+            "internal_user_id": str(self.internal_user_id)  # Use the service's internal_user_id instead
         }
 
     def get_single_email_from_db(self, email_id: str) -> Optional[dict]:
-        """Get a single email from database by gmail_id"""
+        """Get a single email from database by gmail_id with full body content"""
         if not self.internal_user_id:
             logger.warning("❌ No internal_user_id available, cannot retrieve email")
             return None
@@ -789,8 +823,8 @@ class GoogleService:
             result = self.supabase.table("emails").select("*").eq("user_id", str(self.internal_user_id)).eq("gmail_id", email_id).single().execute()
             
             if result.data:
-                # Format the email for display
-                formatted_email = self._format_inbox_email(result.data)
+                # Format the email for full display (including body content)
+                formatted_email = self._format_full_email(result.data)
                 logger.info(f"✅ Found email in database: {formatted_email.get('subject', 'No Subject')}")
                 return formatted_email
             else:

@@ -17,8 +17,12 @@ export const API_ENDPOINTS = {
     LIST: `${API_BASE_URL}/inbox/`,
     SYNC: `${API_BASE_URL}/inbox/emails/sync`,
     EMAIL: (emailId) => `${API_BASE_URL}/inbox/email/${emailId}`,
-    CONNECTIONS: `${API_BASE_URL}/inbox/connections`,
-    DISCONNECT: (provider) => `${API_BASE_URL}/inbox/connections/${provider}/disconnect`,
+  },
+  
+  // Settings endpoints
+  SETTINGS: {
+    CONNECTIONS: `${API_BASE_URL}/settings/connections`,
+    DISCONNECT: (provider) => `${API_BASE_URL}/settings/connections/${provider}/disconnect`,
   },
   
   // Google OAuth endpoints

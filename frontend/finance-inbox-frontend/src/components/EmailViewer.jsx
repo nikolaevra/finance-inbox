@@ -6,11 +6,14 @@ import { Paperclip, Star, AlertCircle, Reply, ReplyAll, Forward, Archive } from 
 import { cn } from '../lib/utils'
 import axios from 'axios'
 import { API_ENDPOINTS } from '../config/api'
+import { useAuth } from '../contexts/AuthContext'
 
 const EmailViewer = ({ email, onEmailUpdate }) => {
   const [fullEmail, setFullEmail] = useState(null)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('text') // 'text' or 'html'
+  
+  const { getAuthHeaders } = useAuth()
 
   useEffect(() => {
     if (email && email.gmail_id) {
@@ -21,7 +24,9 @@ const EmailViewer = ({ email, onEmailUpdate }) => {
   const fetchFullEmail = async (gmailId) => {
     setLoading(true)
     try {
-      const response = await axios.get(API_ENDPOINTS.INBOX.EMAIL(gmailId))
+      const response = await axios.get(API_ENDPOINTS.INBOX.EMAIL(gmailId), {
+        headers: getAuthHeaders()
+      })
       setFullEmail(response.data)
     } catch (error) {
       console.error('Error fetching full email:', error)
@@ -157,26 +162,27 @@ const EmailViewer = ({ email, onEmailUpdate }) => {
                 {/* Email Body */}
                 <div className="flex-1 overflow-y-auto p-6">
                   {activeTab === 'text' && fullEmail.body.text ? (
-                    <div className="whitespace-pre-wrap font-mono text-sm">
+                    <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed">
                       {fullEmail.body.text}
                     </div>
                   ) : activeTab === 'html' && fullEmail.body.html ? (
                     <div 
-                      className="prose max-w-none"
+                      className="prose prose-sm max-w-none prose-headings:text-foreground prose-p:text-foreground prose-a:text-primary hover:prose-a:text-primary/80"
                       dangerouslySetInnerHTML={{ __html: fullEmail.body.html }}
                     />
                   ) : fullEmail.body.text ? (
-                    <div className="whitespace-pre-wrap font-mono text-sm">
+                    <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed">
                       {fullEmail.body.text}
                     </div>
                   ) : fullEmail.body.html ? (
                     <div 
-                      className="prose max-w-none"
+                      className="prose prose-sm max-w-none prose-headings:text-foreground prose-p:text-foreground prose-a:text-primary hover:prose-a:text-primary/80"
                       dangerouslySetInnerHTML={{ __html: fullEmail.body.html }}
                     />
                   ) : (
                     <div className="text-muted-foreground text-center py-8">
-                      No email content available
+                      <div className="text-lg mb-2">No Content Available</div>
+                      <div className="text-sm">This email may not have readable content or it hasn't been fully synced yet.</div>
                     </div>
                   )}
                 </div>
@@ -185,9 +191,16 @@ const EmailViewer = ({ email, onEmailUpdate }) => {
               <div className="h-full flex items-center justify-center">
                 <div className="text-center text-muted-foreground">
                   <div className="text-lg mb-2">Email Preview</div>
-                  <div className="text-sm max-w-md mx-auto">
-                    {email.snippet || 'No preview available for this email'}
+                  <div className="text-sm max-w-md mx-auto leading-relaxed">
+                    {email.snippet || 'No preview available for this email. Try syncing your emails to get the full content.'}
                   </div>
+                  {!fullEmail && (
+                    <div className="mt-4">
+                      <div className="text-xs text-muted-foreground/60">
+                        Loading full content...
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
