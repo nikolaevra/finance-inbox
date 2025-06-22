@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from services.google_service import GoogleService
 from services.auth_service import get_current_user_profile
 from services.connections_service import connections_service
-from models import ConnectionProvider, ConnectionStatus
+from models import ConnectionProvider
 import logging
 
 logger = logging.getLogger(__name__)
