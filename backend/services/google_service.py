@@ -161,7 +161,7 @@ class GoogleService:
         return False
 
     def _get_tokens_from_db(self) -> Optional[OAuthToken]:
-        """Retrieve tokens from database for the current user"""
+        """Retrieve tokens from database through connections table"""
         logger.info(f"🔍 Retrieving tokens for internal_user_id: {self.internal_user_id}")
         
         if not self.internal_user_id:
@@ -169,15 +169,26 @@ class GoogleService:
             return None
             
         try:
-            logger.debug(f"📊 Querying oauth_tokens table for user_id: {self.internal_user_id}, provider: google")
-            result = self.supabase.table("oauth_tokens").select("*").eq("user_id", str(self.internal_user_id)).eq("provider", "google").single().execute()
+            # First, get the Gmail connection for this user
+            logger.debug(f"📊 Looking up Gmail connection for user_id: {self.internal_user_id}")
+            connection_result = self.supabase.table("connections").select("oauth_token_id").eq("user_id", str(self.internal_user_id)).eq("connection_provider", "gmail").single().execute()
             
-            if result.data:
-                token = OAuthToken(**result.data)
+            if not connection_result.data or not connection_result.data.get('oauth_token_id'):
+                logger.info(f"🔍 No Gmail connection or oauth_token_id found for user {self.internal_user_id}")
+                return None
+            
+            oauth_token_id = connection_result.data['oauth_token_id']
+            logger.debug(f"📊 Found oauth_token_id: {oauth_token_id}, retrieving token details")
+            
+            # Now get the OAuth token using the ID from connection
+            token_result = self.supabase.table("oauth_tokens").select("*").eq("id", oauth_token_id).eq("provider", "google").single().execute()
+            
+            if token_result.data:
+                token = OAuthToken(**token_result.data)
                 logger.info(f"✅ Found tokens for user {self.internal_user_id}, expires at: {token.expires_at}")
                 return token
             else:
-                logger.info(f"🔍 No tokens found for user {self.internal_user_id}")
+                logger.info(f"🔍 No OAuth token found with ID {oauth_token_id}")
                 return None
                 
         except Exception as e:
@@ -185,7 +196,7 @@ class GoogleService:
             return None
 
     def _save_tokens_to_db(self, access_token: str, refresh_token: str, expires_at: datetime, scope: str) -> bool:
-        """Save or update tokens in database"""
+        """Save or update tokens in database through connections table"""
         logger.info(f"💾 Saving tokens for user_id: {self.internal_user_id}, expires at: {expires_at}")
         
         if not self.internal_user_id:
@@ -197,7 +208,6 @@ class GoogleService:
             expires_at_utc = self._ensure_utc(expires_at)
             
             token_data = {
-                "user_id": str(self.internal_user_id),
                 "provider": "google",
                 "access_token": access_token,
                 "refresh_token": refresh_token,
@@ -206,18 +216,35 @@ class GoogleService:
             }
             
             logger.debug(f"📅 Storing expiry time in UTC: {expires_at_utc.isoformat()}")
-            logger.debug(f"📝 Token data prepared: user_id={self.internal_user_id}, provider=google, expires_at={expires_at_utc.isoformat()}")
+            logger.debug(f"📝 Token data prepared: provider=google, expires_at={expires_at_utc.isoformat()}")
             
-            # Try to update existing token first
-            existing = self._get_tokens_from_db()
-            if existing:
+            # Check if we have an existing connection with oauth_token_id
+            existing_token = self._get_tokens_from_db()
+            if existing_token:
                 logger.info(f"🔄 Updating existing tokens for user {self.internal_user_id}")
-                result = self.supabase.table("oauth_tokens").update(token_data).eq("user_id", str(self.internal_user_id)).eq("provider", "google").execute()
+                result = self.supabase.table("oauth_tokens").update(token_data).eq("id", existing_token.id).execute()
+                oauth_token_id = existing_token.id
             else:
                 logger.info(f"➕ Inserting new tokens for user {self.internal_user_id}")
                 result = self.supabase.table("oauth_tokens").insert(token_data).execute()
+                if result.data and len(result.data) > 0:
+                    oauth_token_id = result.data[0]['id']
+                else:
+                    logger.error("❌ Failed to get oauth_token_id from insert result")
+                    return False
             
-            success = len(result.data) > 0
+            # Update the connection with the oauth_token_id
+            if oauth_token_id:
+                logger.debug(f"🔗 Updating connection with oauth_token_id: {oauth_token_id}")
+                connection_update = self.supabase.table("connections").update({
+                    "oauth_token_id": oauth_token_id,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }).eq("user_id", str(self.internal_user_id)).eq("connection_provider", "gmail").execute()
+                
+                if not connection_update.data:
+                    logger.warning("⚠️ Failed to update connection with oauth_token_id")
+            
+            success = len(result.data) > 0 if result.data else False
             if success:
                 logger.info(f"✅ Successfully saved tokens for user {self.internal_user_id}")
             else:
@@ -229,15 +256,30 @@ class GoogleService:
             return False
 
     def _delete_tokens_from_db(self) -> bool:
-        """Delete tokens from database"""
+        """Delete tokens from database through connections table"""
         if not self.internal_user_id:
             return False
             
         try:
-            result = self.supabase.table("oauth_tokens").delete().eq("user_id", str(self.internal_user_id)).eq("provider", "google").execute()
+            # Get the oauth_token_id from the connection
+            existing_token = self._get_tokens_from_db()
+            if not existing_token:
+                logger.info("🔍 No tokens found to delete")
+                return True  # Nothing to delete is success
+            
+            # Delete the OAuth token
+            result = self.supabase.table("oauth_tokens").delete().eq("id", existing_token.id).execute()
+            
+            # Clear the oauth_token_id from the connection
+            self.supabase.table("connections").update({
+                "oauth_token_id": None,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }).eq("user_id", str(self.internal_user_id)).eq("connection_provider", "gmail").execute()
+            
+            logger.info("✅ Successfully deleted tokens and cleared connection reference")
             return True
         except Exception as e:
-            print(f"Error deleting tokens: {str(e)}")
+            logger.error(f"❌ Error deleting tokens: {str(e)}")
             return False
 
     def _create_gmail_connection(self) -> bool:
