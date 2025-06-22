@@ -2,6 +2,66 @@ from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
 from pydantic import BaseModel
+from dataclasses import dataclass
+from enum import Enum
+
+class ConnectionStatus(str, Enum):
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+    REFRESH_REQUIRED = "refresh_required"
+
+class ConnectionProvider(str, Enum):
+    GMAIL = "gmail"
+
+@dataclass
+class UserAuthData:
+    """Structured object representing user authentication data"""
+    access_token: str
+    refresh_token: str
+    token_type: str
+    expires_at: int
+    user: dict
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API responses"""
+        return {
+            "access_token": self.access_token,
+            "refresh_token": self.refresh_token,
+            "token_type": self.token_type,
+            "expires_at": self.expires_at,
+            "user": self.user
+        }
+
+@dataclass
+class EmailDetails:
+    """Structured object representing email details from Gmail API"""
+    id: str
+    thread_id: Optional[str]
+    subject: str
+    from_email: str
+    to_email: str
+    date: str
+    snippet: str
+    body: dict  # Contains 'text' and 'html' keys
+    labels: List[str]
+    has_attachments: bool
+    size_estimate: int
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API responses and database storage"""
+        return {
+            "id": self.id,
+            "thread_id": self.thread_id,
+            "subject": self.subject,
+            "from": self.from_email,
+            "to": self.to_email,
+            "date": self.date,
+            "snippet": self.snippet,
+            "body": self.body,
+            "labels": self.labels,
+            "has_attachments": self.has_attachments,
+            "size_estimate": self.size_estimate
+        }
 
 class User(BaseModel):
     id: Optional[UUID] = None
@@ -18,6 +78,17 @@ class Business(BaseModel):
     id: Optional[UUID] = None
     name: str
     created_at: Optional[datetime] = None
+
+class Connection(BaseModel):
+    id: Optional[UUID] = None
+    user_id: UUID  # References users.id
+    connection_provider: ConnectionProvider
+    status: ConnectionStatus
+    oauth_token_id: Optional[UUID] = None  # References oauth_tokens.id
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    last_sync_at: Optional[datetime] = None
+    metadata: Optional[dict] = None  # Store provider-specific metadata
 
 class OAuthToken(BaseModel):
     id: Optional[UUID] = None

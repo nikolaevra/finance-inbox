@@ -5,6 +5,7 @@ import { Button } from './ui/button'
 import { Paperclip, Star, AlertCircle, Reply, ReplyAll, Forward, Archive } from 'lucide-react'
 import { cn } from '../lib/utils'
 import axios from 'axios'
+import { API_ENDPOINTS } from '../config/api'
 
 const EmailViewer = ({ email, onEmailUpdate }) => {
   const [fullEmail, setFullEmail] = useState(null)
@@ -20,7 +21,7 @@ const EmailViewer = ({ email, onEmailUpdate }) => {
   const fetchFullEmail = async (gmailId) => {
     setLoading(true)
     try {
-      const response = await axios.get(`http://localhost:8000/email/${gmailId}`)
+      const response = await axios.get(API_ENDPOINTS.INBOX.EMAIL(gmailId))
       setFullEmail(response.data)
     } catch (error) {
       console.error('Error fetching full email:', error)

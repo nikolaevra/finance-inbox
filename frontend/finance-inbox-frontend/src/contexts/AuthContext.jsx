@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import axios from 'axios'
 
 const AuthContext = createContext({})
 
@@ -35,6 +36,49 @@ export const AuthProvider = ({ children }) => {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  // Set up axios interceptor to handle auth errors and token refresh
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      async (error) => {
+        // Check if the error is due to authentication failure
+        if (error.response?.status === 401) {
+          const authAction = error.response.headers['x-auth-action']
+          
+          if (authAction === 'refresh-required') {
+            console.log('🔄 Token expired, refreshing session...')
+            try {
+              // Refresh the session using Supabase
+              const { data, error: refreshError } = await supabase.auth.refreshSession()
+              
+              if (refreshError || !data.session) {
+                console.log('❌ Session refresh failed, signing out user...')
+                await signOut()
+              } else {
+                console.log('✅ Session refreshed successfully')
+                // The auth state will update automatically via the listener
+                // You might want to retry the original request here
+              }
+            } catch (refreshError) {
+              console.error('❌ Error refreshing session:', refreshError)
+              await signOut()
+            }
+          } else if (authAction === 'login-required') {
+            console.log('🔐 Backend requires re-login, signing out user...')
+            await signOut()
+            // The auth state change will trigger a redirect to login
+          }
+        }
+        
+        return Promise.reject(error)
+      }
+    )
+
+    return () => {
+      axios.interceptors.response.eject(interceptor)
+    }
+  }, [])  // Empty dependency array since signOut is stable
 
   const signIn = async (email, password) => {
     try {

@@ -8,6 +8,7 @@ from fastapi import HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from passlib.context import CryptContext
 from database import get_supabase
+from models import UserAuthData
 import logging
 
 # Configure logging
@@ -26,6 +27,7 @@ class AuthService:
         self.jwt_secret = os.getenv("SUPABASE_JWT_SECRET")
         if not self.jwt_secret:
             raise ValueError("SUPABASE_JWT_SECRET must be set in environment variables")
+        self.user_auth_data: Optional[UserAuthData] = None
     
     def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
         """Verify JWT token and return user data"""
@@ -49,11 +51,21 @@ class AuthService:
                 "exp": payload.get("exp")
             }
         except jwt.ExpiredSignatureError:
-            logger.warning("Token has expired")
+            logger.info("Token has expired")
             return None
         except jwt.InvalidTokenError as e:
-            logger.warning(f"Invalid token: {e}")
+            logger.info(f"Invalid token: {e}")
             return None
+    
+    def get_user_auth_data(self) -> UserAuthData:
+        """Get the stored user auth data"""
+        if not self.user_auth_data:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="No user auth data found"
+            )
+        
+        return self.user_auth_data
     
     def login_with_email_password(self, email: str, password: str) -> Dict[str, Any]:
         """Login user with email and password using Supabase Auth"""
@@ -65,18 +77,19 @@ class AuthService:
             
             if response.user and response.session:
                 logger.info(f"✅ User logged in successfully: {email}")
-                return {
-                    "access_token": response.session.access_token,
-                    "refresh_token": response.session.refresh_token,
-                    "user": {
+                self.user_auth_data = UserAuthData(
+                    access_token=response.session.access_token,
+                    refresh_token=response.session.refresh_token,
+                    token_type="bearer",
+                    expires_at=response.session.expires_at,
+                    user={
                         "id": response.user.id,
                         "email": response.user.email,
                         "email_confirmed_at": response.user.email_confirmed_at,
                         "last_sign_in_at": response.user.last_sign_in_at
-                    },
-                    "expires_at": response.session.expires_at,
-                    "token_type": "bearer"
-                }
+                    }
+                )
+                return self.user_auth_data.to_dict()
             else:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -111,12 +124,20 @@ class AuthService:
             response = self.supabase.auth.refresh_session(refresh_token)
             
             if response.session:
-                return {
-                    "access_token": response.session.access_token,
-                    "refresh_token": response.session.refresh_token,
-                    "expires_at": response.session.expires_at,
-                    "token_type": "bearer"
-                }
+                # Update the stored auth data with refreshed tokens
+                if self.user_auth_data:
+                    self.user_auth_data.access_token = response.session.access_token
+                    self.user_auth_data.refresh_token = response.session.refresh_token
+                    self.user_auth_data.expires_at = response.session.expires_at
+                    return self.user_auth_data.to_dict()
+                else:
+                    # If no stored auth data, create a minimal response
+                    return {
+                        "access_token": response.session.access_token,
+                        "refresh_token": response.session.refresh_token,
+                        "expires_at": response.session.expires_at,
+                        "token_type": "bearer"
+                    }
             else:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -137,6 +158,9 @@ class AuthService:
             self.supabase.auth.set_session(token, None)
             self.supabase.auth.sign_out()
             
+            # Clear stored auth data
+            self.user_auth_data = None
+            
             logger.info("✅ User logged out successfully")
             return {"message": "Logged out successfully"}
             
@@ -150,9 +174,8 @@ class AuthService:
 # Initialize auth service
 auth_service = AuthService()
 
-# Dependency to get current user from JWT token
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
-    """Dependency to extract and validate user from JWT token"""
+async def get_current_user_auth_data(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
+    """Dependency to extract user auth data from JWT token (Supabase client-side auth)"""
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -161,19 +184,34 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         )
     
     user_data = auth_service.verify_token(credentials.credentials)
+    
     if not user_data:
+        # Token is invalid/expired - let frontend handle refresh via Supabase client
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Token expired. Please refresh your session.",
+            headers={
+                "WWW-Authenticate": "Bearer",
+                "X-Auth-Action": "refresh-required"  # Tell frontend to refresh token
+            },
         )
     
     return user_data
 
-# Optional dependency for routes that may or may not require auth
-async def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))) -> Optional[Dict[str, Any]]:
-    """Optional dependency to get current user (doesn't raise error if no token)"""
-    if not credentials:
-        return None
+# Dependency to get current user profile from JWT token with automatic refresh
+async def get_current_user_profile(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
+    """Dependency to extract user profile from JWT token with automatic refresh"""
+    # First get the auth data (which handles token refresh)
+    user_data = await get_current_user_auth_data(credentials)
     
-    return auth_service.verify_token(credentials.credentials)
+    # Get the user profile from the database
+    user_profile = auth_service.get_user_profile(user_data["user_id"])
+    if not user_profile:
+        logger.error(f"No user profile found for Supabase user {user_data['user_id']}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User profile not found. Please contact support."
+        )
+    
+    return user_profile
+

@@ -9,7 +9,7 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from dotenv import load_dotenv
 from database import get_supabase
-from models import OAuthToken, Email, EmailAttachment
+from models import OAuthToken, EmailDetails
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -18,12 +18,11 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 class GoogleService:
-    def __init__(self, user_id: Optional[Union[str, UUID]] = None):
+    def __init__(self, internal_user_id: Optional[Union[str, UUID]] = None):
         self.client_id = os.environ["GOOGLE_CLIENT_ID"]
         self.client_secret = os.environ["GOOGLE_CLIENT_SECRET"]
         self.redirect_uri = os.environ["GOOGLE_REDIRECT_URI"]
-        self.supabase_user_id = str(user_id) if user_id else None  # Supabase Auth user ID
-        self.internal_user_id = None  # Will be resolved from users table
+        self.internal_user_id = str(internal_user_id) if internal_user_id else None  # Internal user ID from users table
         self.scopes = [
             "https://www.googleapis.com/auth/gmail.readonly",
             "openid",
@@ -32,26 +31,11 @@ class GoogleService:
         ]
         self.supabase = get_supabase()
         
-        # Resolve internal user ID if supabase_user_id is provided
-        if self.supabase_user_id:
-            self._resolve_internal_user_id()
-
-    def _resolve_internal_user_id(self) -> Optional[str]:
-        """Resolve the internal user ID from the users table using supabase_user_id"""
-        try:
-            result = self.supabase.table("users").select("id").eq("supabase_user_id", self.supabase_user_id).single().execute()
-            
-            if result.data:
-                self.internal_user_id = result.data["id"]
-                logger.info(f"✅ Resolved internal user ID {self.internal_user_id} for Supabase user {self.supabase_user_id}")
-                return self.internal_user_id
-            else:
-                logger.warning(f"❌ No user profile found for Supabase user ID {self.supabase_user_id}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"❌ Error resolving internal user ID for {self.supabase_user_id}: {str(e)}")
-            return None
+        # Log initialization
+        if self.internal_user_id:
+            logger.info(f"🔧 GoogleService initialized for internal_user_id: {self.internal_user_id}")
+        else:
+            logger.warning("⚠️ GoogleService initialized without internal_user_id")
 
     def _ensure_utc(self, dt: datetime) -> datetime:
         """Ensure a datetime is in UTC timezone"""
@@ -62,7 +46,7 @@ class GoogleService:
             # Convert to UTC if it's in a different timezone
             return dt.astimezone(timezone.utc)
 
-    def _extract_email_details(self, msg_data: dict) -> dict:
+    def _extract_email_details(self, msg_data: dict) -> EmailDetails:
         """Extract detailed information from Gmail message data"""
         logger.debug(f"📝 Extracting details for email ID: {msg_data.get('id')}")
         
@@ -92,19 +76,19 @@ class GoogleService:
         # Get labels
         labels = msg_data.get('labelIds', [])
         
-        email_details = {
-            'id': email_id,
-            'thread_id': thread_id,
-            'subject': subject,
-            'from': from_email,
-            'to': to_email,
-            'date': date,
-            'snippet': snippet,
-            'body': body_text,
-            'labels': labels,
-            'has_attachments': has_attachments,
-            'size_estimate': msg_data.get('sizeEstimate', 0)
-        }
+        email_details = EmailDetails(
+            id=email_id,
+            thread_id=thread_id,
+            subject=subject,
+            from_email=from_email,
+            to_email=to_email,
+            date=date,
+            snippet=snippet,
+            body=body_text,
+            labels=labels,
+            has_attachments=has_attachments,
+            size_estimate=msg_data.get('sizeEstimate', 0)
+        )
         
         logger.debug(f"✅ Extracted email: {subject[:50]}... from {from_email}")
         return email_details
@@ -178,7 +162,7 @@ class GoogleService:
 
     def _get_tokens_from_db(self) -> Optional[OAuthToken]:
         """Retrieve tokens from database for the current user"""
-        logger.info(f"🔍 Retrieving tokens for user_id: {self.internal_user_id} (Supabase: {self.supabase_user_id})")
+        logger.info(f"🔍 Retrieving tokens for internal_user_id: {self.internal_user_id}")
         
         if not self.internal_user_id:
             logger.warning("❌ No internal_user_id available, cannot retrieve tokens")
@@ -256,7 +240,49 @@ class GoogleService:
             print(f"Error deleting tokens: {str(e)}")
             return False
 
-    def _save_email_to_db(self, email_data: dict) -> bool:
+    def _create_gmail_connection(self) -> bool:
+        """Create Gmail connection record after successful OAuth"""
+        if not self.internal_user_id:
+            logger.warning("❌ No internal_user_id available, cannot create connection record")
+            return False
+        
+        try:
+            # Import here to avoid circular imports
+            from services.connections_service import connections_service
+            
+            # Get the OAuth token ID from the database
+            tokens = self._get_tokens_from_db()
+            oauth_token_id = str(tokens.id) if tokens and tokens.id else None
+            
+            # Use the connections service to handle Gmail connection creation
+            return connections_service.create_gmail_connection_after_oauth(
+                user_id=str(self.internal_user_id),
+                oauth_token_id=oauth_token_id,
+                scopes=self.scopes
+            )
+                
+        except Exception as e:
+            logger.error(f"❌ Error creating Gmail connection: {str(e)}")
+            return False
+
+    def _update_last_sync(self) -> bool:
+        """Update last sync timestamp for Gmail connection"""
+        if not self.internal_user_id:
+            return False
+        
+        try:
+            # Import here to avoid circular imports
+            from services.connections_service import connections_service
+            
+            return connections_service.update_last_sync(
+                user_id=str(self.internal_user_id),
+                provider=ConnectionProvider.GMAIL
+            )
+        except Exception as e:
+            logger.error(f"❌ Error updating last sync: {str(e)}")
+            return False
+
+    def _save_email_to_db(self, email_data: EmailDetails) -> bool:
         """Save email to database"""
         if not self.internal_user_id:
             logger.warning("❌ No internal_user_id available, cannot save email")
@@ -265,39 +291,39 @@ class GoogleService:
         try:
             # Parse date_sent if it exists
             date_sent = None
-            if email_data.get('date'):
+            if email_data.date:
                 try:
                     from email.utils import parsedate_to_datetime
-                    date_sent = parsedate_to_datetime(email_data['date'])
+                    date_sent = parsedate_to_datetime(email_data.date)
                     # Ensure timezone-aware
                     if date_sent.tzinfo is None:
                         date_sent = date_sent.replace(tzinfo=timezone.utc)
                     else:
                         date_sent = date_sent.astimezone(timezone.utc)
                 except Exception as e:
-                    logger.warning(f"⚠️ Failed to parse email date '{email_data.get('date')}': {str(e)}")
+                    logger.warning(f"⚠️ Failed to parse email date '{email_data.date}': {str(e)}")
             
             # Prepare email data for database
             db_email_data = {
                 "user_id": str(self.internal_user_id),
-                "gmail_id": email_data['id'],
-                "thread_id": email_data.get('thread_id'),
-                "subject": email_data.get('subject'),
-                "from_email": email_data.get('from'),
-                "to_email": email_data.get('to'),
+                "gmail_id": email_data.id,
+                "thread_id": email_data.thread_id,
+                "subject": email_data.subject,
+                "from_email": email_data.from_email,
+                "to_email": email_data.to_email,
                 "date_sent": date_sent.isoformat() if date_sent else None,
-                "snippet": email_data.get('snippet'),
-                "body_text": email_data.get('body', {}).get('text'),
-                "body_html": email_data.get('body', {}).get('html'),
-                "labels": email_data.get('labels', []),
-                "has_attachments": email_data.get('has_attachments', False),
-                "size_estimate": email_data.get('size_estimate')
+                "snippet": email_data.snippet,
+                "body_text": email_data.body.get('text'),
+                "body_html": email_data.body.get('html'),
+                "labels": email_data.labels,
+                "has_attachments": email_data.has_attachments,
+                "size_estimate": email_data.size_estimate
             }
             
             # Remove None values to avoid database issues
             db_email_data = {k: v for k, v in db_email_data.items() if v is not None}
             
-            logger.debug(f"💾 Saving email to database: {email_data.get('subject', 'No Subject')[:50]}...")
+            logger.debug(f"💾 Saving email to database: {email_data.subject[:50]}...")
             
             # Try to insert or update (upsert)
             result = self.supabase.table("emails").upsert(
@@ -306,14 +332,14 @@ class GoogleService:
             ).execute()
             
             if result.data:
-                logger.info(f"✅ Successfully saved email {email_data['id']} to database")
+                logger.info(f"✅ Successfully saved email {email_data.id} to database")
                 return True
             else:
-                logger.warning(f"⚠️ No data returned when saving email {email_data['id']}")
+                logger.warning(f"⚠️ No data returned when saving email {email_data.id}")
                 return False
                 
         except Exception as e:
-            logger.error(f"❌ Error saving email {email_data.get('id', 'unknown')} to database: {str(e)}")
+            logger.error(f"❌ Error saving email {email_data.id} to database: {str(e)}")
             return False
 
     def _get_emails_from_db(self, limit: int = 10) -> List[dict]:
@@ -421,7 +447,7 @@ class GoogleService:
             'created_at': email.get('created_at')
         }
 
-    def get_authorization_url(self) -> str:
+    def get_authorization_url(self, state: str = None) -> str:
         """Generate Google OAuth authorization URL"""
         flow = Flow.from_client_config(
             {
@@ -435,16 +461,19 @@ class GoogleService:
             scopes=self.scopes,
             redirect_uri=self.redirect_uri,
         )
-        authorization_url, state = flow.authorization_url(
-            access_type='offline',
-            include_granted_scopes='true',
-            prompt='consent'  # Force consent screen to get refresh token
-        )
+        
+        auth_params = {
+            'access_type': 'offline',
+            'include_granted_scopes': 'true',
+            'prompt': 'consent'  # Force consent screen to get refresh token
+        }
+        
+        # Add custom state if provided (for user identification in callback)
+        if state:
+            auth_params['state'] = state
+        
+        authorization_url, _ = flow.authorization_url(**auth_params)
 
-        # sample response
-        # http://localhost:8000/google-auth/callback?state=GOLiQkZMcRKwNHwbKj54YmTXIHXTxs&code=4/0AVMBsJi28MvE2Bkd1NT-DMD8raESHNbJpsHQ2SacQEuxidtH5XJZiDEtSQaf0aUQjNffQA&scope=email%20profile%20https://www.googleapis.com/auth/gmail.readonly%20https://www.googleapis.com/auth/userinfo.profile%20https://www.googleapis.com/auth/userinfo.email%20openid&authuser=1&prompt=consent
-
-        # Save state in session if you use one
         return authorization_url
 
     def handle_oauth_callback(self, code: str) -> dict:
@@ -495,6 +524,10 @@ class GoogleService:
                 scope=scope_string
             ):
                 logger.info(f"✅ OAuth flow completed successfully for user {self.internal_user_id}")
+                
+                # Create/update connection record
+                self._create_gmail_connection()
+                
                 return {"message": "Authentication complete. Tokens saved to database."}
             else:
                 logger.error(f"❌ Failed to save tokens to database for user {self.internal_user_id}")
@@ -564,69 +597,21 @@ class GoogleService:
                 
                 # Extract email details
                 email_details = self._extract_email_details(msg_data)
-                emails.append(email_details)
+                emails.append(email_details.to_dict())  # Convert to dict for API compatibility
                 
                 # Save email to database
                 self._save_email_to_db(email_details)
             
             logger.info(f"✅ Successfully fetched and saved {len(emails)} emails for user {self.internal_user_id}")
+            
+            # Update last sync time
+            self._update_last_sync()
+            
             return emails
             
         except Exception as e:
             logger.error(f"❌ Error fetching emails for user {self.internal_user_id}: {str(e)}")
             return []
-
-    def get_single_email(self, email_id: str) -> dict:
-        """Get detailed information for a single email by ID"""
-        logger.info(f"📧 Fetching single email {email_id} for user {self.internal_user_id}")
-        
-        # Get tokens from database
-        tokens = self._get_tokens_from_db()
-        if not tokens:
-            logger.warning(f"❌ No tokens available for user {self.internal_user_id}")
-            return {"error": "No authentication tokens available"}
-
-        try:
-            # Check if token needs refresh
-            if not self._refresh_token_if_needed():
-                logger.error(f"❌ Token refresh failed for user {self.internal_user_id}")
-                return {"error": "Token refresh failed"}
-            
-            # Get fresh tokens after potential refresh
-            tokens = self._get_tokens_from_db()
-            if not tokens:
-                logger.error(f"❌ No tokens found after refresh for user {self.internal_user_id}")
-                return {"error": "No tokens found after refresh"}
-
-            # Build credentials object
-            creds_obj = Credentials(
-                tokens.access_token,
-                refresh_token=tokens.refresh_token,
-                token_uri="https://oauth2.googleapis.com/token",
-                client_id=self.client_id,
-                client_secret=self.client_secret,
-            )
-            
-            # Build Gmail service
-            service = build('gmail', 'v1', credentials=creds_obj)
-            
-            # Fetch single message
-            logger.info(f"🌐 Fetching email details for ID: {email_id}")
-            msg_data = service.users().messages().get(
-                userId='me', 
-                id=email_id,
-                format='full'
-            ).execute()
-            
-            # Extract email details
-            email_details = self._extract_email_details(msg_data)
-            
-            logger.info(f"✅ Successfully fetched email: {email_details.get('subject', 'No Subject')}")
-            return email_details
-            
-        except Exception as e:
-            logger.error(f"❌ Error fetching email {email_id} for user {self.internal_user_id}: {str(e)}")
-            return {"error": f"Failed to fetch email: {str(e)}"}
 
     def get_tokens(self) -> dict:
         """Get stored tokens (for debugging/testing)"""
@@ -640,11 +625,24 @@ class GoogleService:
         }
 
     def clear_tokens(self) -> dict:
-        """Clear stored tokens"""
-        if self._delete_tokens_from_db():
-            return {"message": "Tokens cleared from database"}
-        else:
-            return {"message": "No tokens found or failed to clear"}
+        """Clear stored tokens and disconnect connection"""
+        try:
+            # Import here to avoid circular imports
+            from services.connections_service import connections_service
+            
+            # Disconnect the Gmail connection
+            if self.internal_user_id:
+                connections_service.disconnect_gmail_connection(str(self.internal_user_id))
+            
+            # Clear tokens from database
+            if self._delete_tokens_from_db():
+                return {"message": "Tokens cleared and connection disconnected"}
+            else:
+                return {"message": "Connection disconnected, but no tokens found or failed to clear"}
+                
+        except Exception as e:
+            logger.error(f"❌ Error clearing tokens and connection: {str(e)}")
+            return {"error": f"Failed to clear tokens: {str(e)}"}
 
     def is_authenticated(self) -> bool:
         """Check if user is authenticated"""
@@ -736,3 +734,27 @@ class GoogleService:
             "provider": tokens.provider,
             "user_id": str(tokens.user_id)
         }
+
+    def get_single_email_from_db(self, email_id: str) -> Optional[dict]:
+        """Get a single email from database by gmail_id"""
+        if not self.internal_user_id:
+            logger.warning("❌ No internal_user_id available, cannot retrieve email")
+            return None
+        
+        try:
+            logger.info(f"🔍 Retrieving email {email_id} from database for user {self.internal_user_id}")
+            
+            result = self.supabase.table("emails").select("*").eq("user_id", str(self.internal_user_id)).eq("gmail_id", email_id).single().execute()
+            
+            if result.data:
+                # Format the email for display
+                formatted_email = self._format_inbox_email(result.data)
+                logger.info(f"✅ Found email in database: {formatted_email.get('subject', 'No Subject')}")
+                return formatted_email
+            else:
+                logger.info(f"📭 No email found in database with ID {email_id}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Error retrieving email {email_id} from database: {str(e)}")
+            return None

@@ -6,6 +6,7 @@ import EmailList from './EmailList'
 import EmailViewer from './EmailViewer'
 import { useAuth } from '../contexts/AuthContext'
 import axios from 'axios'
+import { API_ENDPOINTS } from '../config/api'
 
 const Inbox = () => {
   const [emails, setEmails] = useState([])
@@ -22,7 +23,7 @@ const Inbox = () => {
   const loadEmails = async () => {
     setLoading(true)
     try {
-      const response = await axios.get('http://localhost:8000/inbox?limit=50', {
+      const response = await axios.get(`${API_ENDPOINTS.INBOX.LIST}?limit=50`, {
         headers: getAuthHeaders()
       })
       setEmails(response.data.inbox || [])
@@ -39,7 +40,7 @@ const Inbox = () => {
   const syncEmails = async () => {
     setSyncing(true)
     try {
-      await axios.post('http://localhost:8000/emails/sync?max_results=20', {}, {
+      await axios.post(`${API_ENDPOINTS.INBOX.SYNC}?max_results=20`, {}, {
         headers: getAuthHeaders()
       })
       // Reload emails after sync
