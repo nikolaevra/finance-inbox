@@ -46,6 +46,8 @@ class EmailDetails:
     labels: List[str]
     has_attachments: bool
     size_estimate: int
+    cc_email: Optional[str] = None
+    bcc_email: Optional[str] = None
     
     def to_dict(self) -> dict:
         """Convert to dictionary for API responses and database storage"""
@@ -60,7 +62,9 @@ class EmailDetails:
             "body": self.body,
             "labels": self.labels,
             "has_attachments": self.has_attachments,
-            "size_estimate": self.size_estimate
+            "size_estimate": self.size_estimate,
+            "cc_email": self.cc_email,
+            "bcc_email": self.bcc_email
         }
 
 class User(BaseModel):

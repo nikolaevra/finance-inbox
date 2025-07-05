@@ -2,33 +2,33 @@ import React, { useState, useEffect } from 'react'
 import { Button } from './ui/button'
 import { Card } from './ui/card'
 import { RefreshCw, Settings, Search } from 'lucide-react'
-import EmailList from './EmailList'
-import EmailViewer from './EmailViewer'
+import ThreadList from './ThreadList'
+import ThreadViewer from './ThreadViewer'
 import { useAuth } from '../contexts/AuthContext'
 import axios from 'axios'
 import { API_ENDPOINTS } from '../config/api'
 
 const Inbox = () => {
-  const [emails, setEmails] = useState([])
-  const [selectedEmail, setSelectedEmail] = useState(null)
+  const [threads, setThreads] = useState([])
+  const [selectedThread, setSelectedThread] = useState(null)
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   
   const { getAuthHeaders } = useAuth()
 
   useEffect(() => {
-    loadEmails()
+    loadThreads()
   }, [])
 
-  const loadEmails = async () => {
+  const loadThreads = async () => {
     setLoading(true)
     try {
       const response = await axios.get(`${API_ENDPOINTS.INBOX.LIST}?limit=50`, {
         headers: getAuthHeaders()
       })
-      setEmails(response.data.inbox || [])
+      setThreads(response.data.threads || [])
     } catch (error) {
-      console.error('Error loading emails:', error)
+      console.error('Error loading threads:', error)
       if (error.response?.status === 401) {
         console.error('Authentication failed - please login again')
       }
@@ -43,8 +43,8 @@ const Inbox = () => {
       await axios.post(`${API_ENDPOINTS.INBOX.SYNC}?max_results=20`, {}, {
         headers: getAuthHeaders()
       })
-      // Reload emails after sync
-      await loadEmails()
+      // Reload threads after sync
+      await loadThreads()
     } catch (error) {
       console.error('Error syncing emails:', error)
       if (error.response?.status === 401) {
@@ -55,8 +55,8 @@ const Inbox = () => {
     }
   }
 
-  const handleEmailSelect = (email) => {
-    setSelectedEmail(email)
+  const handleThreadSelect = (thread) => {
+    setSelectedThread(thread)
   }
 
   return (
@@ -70,7 +70,7 @@ const Inbox = () => {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={loadEmails}
+                onClick={loadThreads}
                 disabled={loading}
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -99,23 +99,23 @@ const Inbox = () => {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Email List - 1/3 width */}
+        {/* Thread List - 1/3 width */}
         <div className="w-1/3 border-r">
           <Card className="h-full rounded-none border-0">
-            <EmailList
-              emails={emails}
-              selectedEmail={selectedEmail}
-              onEmailSelect={handleEmailSelect}
+            <ThreadList
+              threads={threads}
+              selectedThread={selectedThread}
+              onThreadSelect={handleThreadSelect}
               loading={loading}
             />
           </Card>
         </div>
 
-        {/* Email Viewer - 2/3 width */}
+        {/* Thread Viewer - 2/3 width */}
         <div className="flex-1">
-          <EmailViewer
-            email={selectedEmail}
-            onEmailUpdate={() => loadEmails()}
+          <ThreadViewer
+            thread={selectedThread}
+            onThreadUpdate={() => loadThreads()}
           />
         </div>
       </div>
@@ -124,15 +124,15 @@ const Inbox = () => {
       <div className="border-t px-6 py-2 text-xs text-muted-foreground">
         <div className="flex items-center justify-between">
           <div>
-            {emails.length > 0 ? (
-              `${emails.length} emails loaded`
+            {threads.length > 0 ? (
+              `${threads.length} threads loaded (${threads.reduce((sum, thread) => sum + thread.email_count, 0)} total emails)`
             ) : (
-              'No emails'
+              'No threads'
             )}
           </div>
           <div className="flex items-center gap-4">
-            {selectedEmail && (
-              <span>Selected: {selectedEmail.subject || '(No Subject)'}</span>
+            {selectedThread && (
+              <span>Selected: {selectedThread.subject || '(No Subject)'} ({selectedThread.email_count} emails)</span>
             )}
             <span>Finance Inbox v1.0</span>
           </div>

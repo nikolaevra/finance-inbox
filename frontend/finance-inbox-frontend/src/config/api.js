@@ -14,9 +14,12 @@ export const API_ENDPOINTS = {
   
   // Inbox endpoints
   INBOX: {
-    LIST: `${API_BASE_URL}/inbox/`,
+    LIST: `${API_BASE_URL}/inbox/`,           // Get threads (new)
+    EMAILS: `${API_BASE_URL}/inbox/emails`,   // Get individual emails (legacy)
     SYNC: `${API_BASE_URL}/inbox/emails/sync`,
     EMAIL: (emailId) => `${API_BASE_URL}/inbox/email/${emailId}`,
+    THREAD: (threadId) => `${API_BASE_URL}/inbox/thread/${threadId}`,
+    REPLY: (emailId) => `${API_BASE_URL}/inbox/email/${emailId}/reply`,
   },
   
   // Settings endpoints

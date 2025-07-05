@@ -1,21 +1,51 @@
 """Inbox API endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from services.google_service import GoogleService
 from services.auth_service import get_current_user_profile
 import logging
+from typing import Optional, List
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/inbox", tags=["Inbox"])
 
+class EmailReplyRequest(BaseModel):
+    """Request model for email replies"""
+    reply_body: str
+    reply_subject: str = None
+    to: Optional[List[str]] = None  # Override reply recipients
+    cc: Optional[List[str]] = None  # Add CC recipients
+    bcc: Optional[List[str]] = None  # Add BCC recipients
+
+
+
 @router.get("/")
 def get_inbox(limit: int = 50, offset: int = 0, current_user_profile: dict = Depends(get_current_user_profile)):
-    """Get user's inbox - all stored emails from database"""
+    """Get user's inbox organized by email threads"""
+    google_service = GoogleService(internal_user_id=current_user_profile["id"])
+    threads = google_service.get_inbox_threads(limit=limit, offset=offset)
+    
+    # Calculate total email count across all threads
+    total_emails = sum(thread.get('email_count', 0) for thread in threads)
+    
+    return {
+        "threads": threads,
+        "thread_count": len(threads),
+        "total_emails": total_emails,
+        "limit": limit,
+        "offset": offset,
+        "source": "database"
+    }
+
+@router.get("/emails")
+def get_emails(limit: int = 50, offset: int = 0, current_user_profile: dict = Depends(get_current_user_profile)):
+    """Get user's emails as individual items (non-threaded view)"""
     google_service = GoogleService(internal_user_id=current_user_profile["id"])
     emails = google_service.get_inbox_emails(limit=limit, offset=offset)
     return {
-        "inbox": emails,
+        "emails": emails,
         "count": len(emails),
         "limit": limit,
         "offset": offset,
@@ -46,5 +76,50 @@ def get_single_email(email_id: str, current_user_profile: dict = Depends(get_cur
         )
     
     return email
+
+@router.get("/thread/{thread_id}")
+def get_thread(thread_id: str, current_user_profile: dict = Depends(get_current_user_profile)):
+    """Get a specific email thread with all emails in conversation"""
+    google_service = GoogleService(internal_user_id=current_user_profile["id"])
+    thread = google_service.get_thread_by_id(thread_id)
+    
+    if not thread:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Thread {thread_id} not found"
+        )
+    
+    return thread
+
+@router.post("/email/{email_id}/reply")
+def reply_to_email(email_id: str, reply_request: EmailReplyRequest, current_user_profile: dict = Depends(get_current_user_profile)):
+    """Reply to an email using Gmail API with customizable recipients"""
+    logger.info(f"📤 Processing reply request for email {email_id}")
+    
+    google_service = GoogleService(internal_user_id=current_user_profile["id"])
+    
+    # Send the reply using GoogleService with all recipient options
+    result = google_service.send_email_reply(
+        original_email_id=email_id,
+        reply_body=reply_request.reply_body,
+        reply_subject=reply_request.reply_subject,
+        to=reply_request.to,
+        cc=reply_request.cc,
+        bcc=reply_request.bcc
+    )
+    
+    # Check if the reply was sent successfully
+    if result.get("error"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result["error"]
+        )
+    
+    logger.info(f"✅ Reply sent successfully for email {email_id}")
+    
+    return {
+        "message": f"Successfully sent reply for email {email_id}",
+        "email_id": email_id,
+    }
 
 

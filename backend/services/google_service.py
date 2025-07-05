@@ -1,15 +1,19 @@
 import os
 import logging
+import re
+import base64
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Union
 from uuid import UUID
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from dotenv import load_dotenv
 from database import get_supabase
-from models import OAuthToken, EmailDetails
+from models import OAuthToken, EmailDetails, ConnectionProvider
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -25,6 +29,7 @@ class GoogleService:
         self.internal_user_id = str(internal_user_id) if internal_user_id else None  # Internal user ID from users table
         self.scopes = [
             "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/gmail.send",
             "openid",
             "https://www.googleapis.com/auth/userinfo.email",
             "https://www.googleapis.com/auth/userinfo.profile"
@@ -107,7 +112,6 @@ class GoogleService:
             if mime_type == 'text/plain' and not body['text']:
                 data = part.get('body', {}).get('data', '')
                 if data:
-                    import base64
                     try:
                         decoded = base64.urlsafe_b64decode(data + '===').decode('utf-8')
                         body['text'] = decoded
@@ -118,7 +122,6 @@ class GoogleService:
             elif mime_type == 'text/html' and not body['html']:
                 data = part.get('body', {}).get('data', '')
                 if data:
-                    import base64
                     try:
                         decoded = base64.urlsafe_b64decode(data + '===').decode('utf-8')
                         body['html'] = decoded
@@ -369,6 +372,12 @@ class GoogleService:
                 "size_estimate": email_data.size_estimate
             }
             
+            # Add CC and BCC fields if available (for sent emails)
+            if email_data.cc_email:
+                db_email_data['cc_email'] = email_data.cc_email
+            if email_data.bcc_email:
+                db_email_data['bcc_email'] = email_data.bcc_email
+            
             # Remove None values to avoid database issues
             db_email_data = {k: v for k, v in db_email_data.items() if v is not None}
             
@@ -444,6 +453,140 @@ class GoogleService:
         except Exception as e:
             logger.error(f"❌ Error retrieving inbox for user {self.internal_user_id}: {str(e)}")
             return []
+
+    def get_inbox_threads(self, limit: int = 50, offset: int = 0) -> List[dict]:
+        """Get inbox organized by email threads with proper ordering"""
+        if not self.internal_user_id:
+            logger.warning("❌ No internal_user_id available, cannot retrieve inbox threads")
+            return []
+        
+        try:
+            logger.info(f"🧵 Retrieving inbox threads for user {self.internal_user_id} (limit: {limit}, offset: {offset})")
+            
+            # Get all emails for the user, including thread_id
+            result = self.supabase.table("emails").select(
+                "id, gmail_id, subject, from_email, to_email, date_sent, snippet, "
+                "labels, has_attachments, size_estimate, is_processed, created_at, thread_id"
+            ).eq("user_id", str(self.internal_user_id)).order("date_sent", desc=True).execute()
+            
+            if not result.data:
+                logger.info(f"📭 No emails found for user {self.internal_user_id}")
+                return []
+            
+            # Group emails by thread_id
+            threads_map = {}
+            for email in result.data:
+                thread_id = email.get('thread_id')
+                if not thread_id:
+                    # If no thread_id, create a single-email thread using gmail_id
+                    thread_id = email.get('gmail_id', f"single_{email.get('id')}")
+                
+                if thread_id not in threads_map:
+                    threads_map[thread_id] = []
+                
+                formatted_email = self._format_inbox_email(email)
+                formatted_email['thread_id'] = thread_id  # Ensure thread_id is included
+                threads_map[thread_id].append(formatted_email)
+            
+            # Convert to list of thread objects and sort
+            threads = []
+            for thread_id, emails in threads_map.items():
+                # Sort emails within thread by date (oldest first for conversation flow)
+                emails.sort(key=lambda x: x.get('date_sent') or '', reverse=False)
+                
+                # Get thread metadata from the latest email
+                latest_email = max(emails, key=lambda x: x.get('date_sent') or '')
+                
+                # Count unread emails in thread
+                unread_count = sum(1 for email in emails if email.get('is_unread', False))
+                
+                # Determine if thread has attachments
+                has_attachments = any(email.get('has_attachments', False) for email in emails)
+                
+                # Create thread object
+                thread = {
+                    'thread_id': thread_id,
+                    'subject': latest_email.get('subject', '(No Subject)'),
+                    'latest_sender': latest_email.get('sender', 'Unknown'),
+                    'latest_from_email': latest_email.get('from_email', ''),
+                    'latest_date': latest_email.get('date'),
+                    'latest_date_sent': latest_email.get('date_sent'),
+                    'latest_snippet': latest_email.get('snippet', ''),
+                    'email_count': len(emails),
+                    'unread_count': unread_count,
+                    'has_attachments': has_attachments,
+                    'is_unread': unread_count > 0,
+                    'labels': latest_email.get('labels', []),
+                    'emails': emails  # All emails in the thread
+                }
+                
+                threads.append(thread)
+            
+            # Sort threads by latest email date (newest first)
+            threads.sort(key=lambda x: x.get('latest_date_sent') or '', reverse=True)
+            
+            # Apply pagination to threads
+            paginated_threads = threads[offset:offset + limit]
+            
+            logger.info(f"✅ Retrieved {len(paginated_threads)} threads (total: {len(threads)}) for inbox")
+            return paginated_threads
+                
+        except Exception as e:
+            logger.error(f"❌ Error retrieving inbox threads for user {self.internal_user_id}: {str(e)}")
+            return []
+
+    def get_thread_by_id(self, thread_id: str) -> Optional[dict]:
+        """Get a specific thread by thread_id with all emails"""
+        if not self.internal_user_id:
+            logger.warning("❌ No internal_user_id available, cannot retrieve thread")
+            return None
+        
+        try:
+            logger.info(f"🧵 Retrieving thread {thread_id} for user {self.internal_user_id}")
+            
+            # Get all emails in the thread
+            result = self.supabase.table("emails").select("*").eq("user_id", str(self.internal_user_id)).eq("thread_id", thread_id).order("date_sent", desc=False).execute()
+            
+            if not result.data:
+                logger.info(f"📭 No emails found in thread {thread_id}")
+                return None
+            
+            # Format all emails in the thread
+            formatted_emails = []
+            for email in result.data:
+                formatted_email = self._format_full_email(email)
+                formatted_emails.append(formatted_email)
+            
+            # Get thread metadata from the latest email
+            latest_email = max(formatted_emails, key=lambda x: x.get('date_sent') or '')
+            
+            # Count unread emails in thread
+            unread_count = sum(1 for email in formatted_emails if email.get('is_unread', False))
+            
+            # Determine if thread has attachments
+            has_attachments = any(email.get('has_attachments', False) for email in formatted_emails)
+            
+            thread = {
+                'thread_id': thread_id,
+                'subject': latest_email.get('subject', '(No Subject)'),
+                'latest_sender': latest_email.get('sender', 'Unknown'),
+                'latest_from_email': latest_email.get('from_email', ''),
+                'latest_date': latest_email.get('date'),
+                'latest_date_sent': latest_email.get('date_sent'),
+                'email_count': len(formatted_emails),
+                'unread_count': unread_count,
+                'has_attachments': has_attachments,
+                'is_unread': unread_count > 0,
+                'labels': latest_email.get('labels', []),
+                'emails': formatted_emails  # All emails with full content
+            }
+            
+            logger.info(f"✅ Retrieved thread {thread_id} with {len(formatted_emails)} emails")
+            return thread
+                
+        except Exception as e:
+            logger.error(f"❌ Error retrieving thread {thread_id}: {str(e)}")
+            return None
 
     def _format_inbox_email(self, email: dict) -> dict:
         """Format email for inbox display"""
@@ -617,39 +760,13 @@ class GoogleService:
         """Fetch Gmail emails using stored credentials"""
         logger.info(f"📧 Starting Gmail email fetch for user {self.internal_user_id}")
         
-        # Get tokens from database
-        tokens = self._get_tokens_from_db()
-        if not tokens:
-            logger.warning(f"❌ No tokens available for user {self.internal_user_id}, cannot fetch emails")
+        # Get authenticated Gmail service
+        service, error = self._get_authenticated_gmail_service()
+        if error:
+            logger.error(f"❌ Cannot fetch emails: {error.get('error', 'Unknown error')}")
             return []
 
         try:
-            # Check if token needs refresh
-            logger.info("🔄 Checking if token refresh is needed before fetching emails")
-            if not self._refresh_token_if_needed():
-                logger.error(f"❌ Token refresh failed for user {self.internal_user_id}, cannot fetch emails")
-                return []
-            
-            # Get fresh tokens after potential refresh
-            logger.debug("🔍 Getting fresh tokens after refresh check")
-            tokens = self._get_tokens_from_db()
-            if not tokens:
-                logger.error(f"❌ No tokens found after refresh for user {self.internal_user_id}")
-                return []
-
-            # Build credentials object
-            logger.debug("🔑 Building Google credentials object")
-            creds_obj = Credentials(
-                tokens.access_token,
-                refresh_token=tokens.refresh_token,
-                token_uri="https://oauth2.googleapis.com/token",
-                client_id=self.client_id,
-                client_secret=self.client_secret,
-            )
-            
-            # Build Gmail service
-            logger.debug("🔧 Building Gmail API service")
-            service = build('gmail', 'v1', credentials=creds_obj)
             
             # Fetch messages
             logger.info(f"🌐 Fetching messages from Gmail API (max {max_results})")
@@ -724,6 +841,47 @@ class GoogleService:
         """Check if user is authenticated"""
         tokens = self._get_tokens_from_db()
         return bool(tokens and tokens.access_token)
+
+    def _get_authenticated_gmail_service(self):
+        """Get authenticated Gmail service object with token management"""
+        logger.info(f"🔧 Getting authenticated Gmail service for user {self.internal_user_id}")
+        
+        # Get tokens from database
+        tokens = self._get_tokens_from_db()
+        if not tokens:
+            logger.warning(f"❌ No tokens available for user {self.internal_user_id}")
+            return None, {"error": "User not authenticated"}
+
+        try:
+            # Check if token needs refresh
+            if not self._refresh_token_if_needed():
+                logger.error(f"❌ Token refresh failed for user {self.internal_user_id}")
+                return None, {"error": "Authentication failed"}
+            
+            # Get fresh tokens after potential refresh
+            tokens = self._get_tokens_from_db()
+            if not tokens:
+                logger.error(f"❌ No tokens found after refresh for user {self.internal_user_id}")
+                return None, {"error": "Authentication failed"}
+
+            # Build credentials object
+            creds_obj = Credentials(
+                tokens.access_token,
+                refresh_token=tokens.refresh_token,
+                token_uri="https://oauth2.googleapis.com/token",
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+            )
+            
+            # Build Gmail service
+            service = build('gmail', 'v1', credentials=creds_obj)
+            logger.info(f"✅ Gmail service authenticated successfully for user {self.internal_user_id}")
+            
+            return service, None
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting Gmail service for user {self.internal_user_id}: {str(e)}")
+            return None, {"error": f"Authentication failed: {str(e)}"}
 
     def _refresh_token_if_needed(self) -> bool:
         """Refresh access token if it's expired or about to expire"""
@@ -834,3 +992,130 @@ class GoogleService:
         except Exception as e:
             logger.error(f"❌ Error retrieving email {email_id} from database: {str(e)}")
             return None
+
+    def send_email_reply(self, original_email_id: str, reply_body: str, reply_subject: str = None, 
+                        to: Optional[List[str]] = None, cc: Optional[List[str]] = None, 
+                        bcc: Optional[List[str]] = None) -> dict:
+        """Send a reply to an email using Gmail API with customizable recipients"""
+        logger.info(f"📤 Sending reply to email {original_email_id} for user {self.internal_user_id}")
+        
+        # Get authenticated Gmail service
+        service, error = self._get_authenticated_gmail_service()
+        if error:
+            return error
+
+        try:
+            # Get original email data from our database (no API call needed!)
+            logger.info(f"🔍 Getting original email {original_email_id} data from database")
+            original_email = self.get_single_email_from_db(original_email_id)
+            
+            if not original_email:
+                return {"error": f"Original email {original_email_id} not found in database"}
+            
+            # Extract data we need from our database
+            original_subject = original_email.get('subject', 'No Subject')
+            original_from = original_email.get('from_email', '')
+            thread_id = original_email.get('thread_id', '')
+            
+            logger.info(f"✅ Retrieved original email data from database: {original_subject[:50]}...")
+            
+            # Determine recipients
+            if to:
+                # Use custom recipients if provided
+                reply_to_emails = to
+                logger.info(f"📧 Using custom TO recipients: {', '.join(reply_to_emails)}")
+            else:
+                # Default behavior: reply to original sender
+                email_match = re.search(r'<(.+?)>', original_from)
+                reply_to_email = email_match.group(1) if email_match else original_from
+                reply_to_emails = [reply_to_email]
+                logger.info(f"📧 Using default TO recipient: {reply_to_email}")
+            
+            # Get user's email address for 'from' field
+            user_profile = service.users().getProfile(userId='me').execute()
+            user_email = user_profile.get('emailAddress', '')
+            
+            # Prepare reply subject
+            if not reply_subject:
+                reply_subject = f"Re: {original_subject}" if not original_subject.startswith('Re:') else original_subject
+            
+            # Create the reply message
+            msg = MIMEMultipart()
+            msg['From'] = user_email
+            msg['To'] = ', '.join(reply_to_emails)
+            msg['Subject'] = reply_subject
+            
+            # Add CC recipients if provided
+            if cc:
+                msg['Cc'] = ', '.join(cc)
+                logger.info(f"📧 Adding CC recipients: {', '.join(cc)}")
+            
+            # Add BCC recipients if provided (BCC is handled in the send request, not headers)
+            if bcc:
+                logger.info(f"📧 Adding BCC recipients: {', '.join(bcc)}")
+            
+            # Note: Gmail threading works primarily with threadId, so we don't need
+            # the original message-id headers. Gmail will handle threading automatically.
+            
+            # Add the reply body
+            msg.attach(MIMEText(reply_body, 'plain'))
+            
+            # Encode the message
+            raw_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
+            
+            # Prepare all recipients for Gmail API (TO + CC + BCC)
+            all_recipients = reply_to_emails[:]
+            if cc:
+                all_recipients.extend(cc)
+            if bcc:
+                all_recipients.extend(bcc)
+            
+            # Send the reply
+            logger.info(f"📤 Sending reply to {len(all_recipients)} recipients with subject: {reply_subject}")
+            send_result = service.users().messages().send(
+                userId='me',
+                body={
+                    'raw': raw_message,
+                    'threadId': thread_id  # Keep it in the same thread
+                }
+            ).execute()
+            
+            sent_message_id = send_result.get('id')
+            logger.info(f"✅ Reply sent successfully with ID: {sent_message_id}")
+            
+            # Store the sent email directly in database (no need to fetch from API)
+            logger.info(f"💾 Storing sent email {sent_message_id} in database")
+            try:
+                # Create EmailDetails object from the data we already have
+                sent_email_data = EmailDetails(
+                    id=sent_message_id,
+                    thread_id=thread_id,
+                    subject=reply_subject,
+                    from_email=user_email,
+                    to_email=', '.join(reply_to_emails),
+                    date=datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S %z'),
+                    snippet=reply_body[:150] + '...' if len(reply_body) > 150 else reply_body,
+                    body={'text': reply_body, 'html': ''},
+                    labels=['SENT'],  # Gmail automatically adds SENT label
+                    has_attachments=False,
+                    size_estimate=len(reply_body),
+                    cc_email=', '.join(cc) if cc else None,
+                    bcc_email=', '.join(bcc) if bcc else None
+                )
+                
+                # Save the sent email to database
+                if self._save_email_to_db(sent_email_data):
+                    logger.info(f"✅ Sent email {sent_message_id} stored in database")
+                else:
+                    logger.warning(f"⚠️ Failed to store sent email {sent_message_id} in database")
+                    
+            except Exception as e:
+                logger.error(f"❌ Error storing sent email {sent_message_id}: {str(e)}")
+                # Don't fail the entire operation for this
+            
+            # Success - no response data needed
+            return {}
+            
+        except Exception as e:
+            logger.error(f"❌ Error sending reply for user {self.internal_user_id}: {str(e)}")
+            return {"error": f"Failed to send reply: {str(e)}"}
