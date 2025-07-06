@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader } from './ui/card'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
-import { Paperclip, Star, AlertCircle, Reply, ChevronUp, ChevronDown, Send, X } from 'lucide-react'
+import { Paperclip, Star, AlertCircle, Reply, ChevronUp, ChevronDown, Send, X, Plus, Minus, CheckCircle, AlertTriangle } from 'lucide-react'
 import { cn } from '../lib/utils'
 import axios from 'axios'
 import { API_ENDPOINTS } from '../config/api'
@@ -21,8 +21,18 @@ const ThreadViewer = ({ thread, onThreadUpdate }) => {
     bcc: []
   })
   const [sendingReply, setSendingReply] = useState(false)
+  const [replySuccess, setReplySuccess] = useState(false)
+  const [replyError, setReplyError] = useState('')
+  const replyFormRef = useRef(null)
   
   const { getAuthHeaders } = useAuth()
+
+  const extractEmailAddress = (email) => {
+    // Extract just the email part from "Display Name <email@domain.com>" format
+    const displayNameRegex = /^.+<([^\s@]+@[^\s@]+\.[^\s@]+)>$/
+    const match = email.match(displayNameRegex)
+    return match ? match[1] : email
+  }
 
   useEffect(() => {
     if (thread && thread.thread_id) {
@@ -36,6 +46,19 @@ const ThreadViewer = ({ thread, onThreadUpdate }) => {
       }
     }
   }, [thread])
+
+  // Auto-scroll to reply form when it becomes visible
+  useEffect(() => {
+    if (showReplyForm && replyFormRef.current) {
+      // Use setTimeout to ensure the form is fully rendered before scrolling
+      setTimeout(() => {
+        replyFormRef.current.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center' 
+        })
+      }, 100)
+    }
+  }, [showReplyForm])
 
   const fetchFullThread = async (threadId) => {
     setLoading(true)
@@ -70,43 +93,76 @@ const ThreadViewer = ({ thread, onThreadUpdate }) => {
   }
 
   const handleReply = (email) => {
-    const originalSubject = email.subject || ''
+    if (!email) {
+      console.error('No email provided to handleReply')
+      return
+    }
+    
+    const currentThreadToShow = fullThread || thread
+    const originalSubject = email.subject || currentThreadToShow?.subject || ''
     const replySubject = originalSubject.startsWith('Re:') ? originalSubject : `Re: ${originalSubject}`
     
-    setReplyData({
+    // Use the original email format for display, but it will be cleaned when sending
+    const fromEmail = email.from_email || email.sender
+    const newReplyData = {
       reply_body: '',
       reply_subject: replySubject,
-      to: [email.from_email],
+      to: fromEmail ? [fromEmail] : [],
       cc: [],
       bcc: []
-    })
+    }
+    
+    setReplyData(newReplyData)
     setShowReplyForm(true)
+    setReplyError('')
+    setReplySuccess(false)
   }
 
   const sendReply = async (emailId) => {
     setSendingReply(true)
+    setReplyError('')
+    setReplySuccess(false)
+    
     try {
-      await axios.post(API_ENDPOINTS.INBOX.REPLY(emailId), replyData, {
+      // Extract clean email addresses for the backend
+      const cleanReplyData = {
+        ...replyData,
+        to: replyData.to.map(email => extractEmailAddress(email)),
+        cc: replyData.cc.map(email => extractEmailAddress(email)),
+        bcc: replyData.bcc.map(email => extractEmailAddress(email))
+      }
+      
+
+      
+      const response = await axios.post(API_ENDPOINTS.INBOX.REPLY(emailId), cleanReplyData, {
         headers: getAuthHeaders()
       })
       
-      // Clear reply form and close it
-      setReplyData({
-        reply_body: '',
-        reply_subject: '',
-        to: [],
-        cc: [],
-        bcc: []
-      })
-      setShowReplyForm(false)
+      // Show success feedback
+      setReplySuccess(true)
       
-      // Refresh the thread
+      // Clear reply form and close it after a brief delay
+      setTimeout(() => {
+        setReplyData({
+          reply_body: '',
+          reply_subject: '',
+          to: [],
+          cc: [],
+          bcc: []
+        })
+        setShowReplyForm(false)
+        setReplySuccess(false)
+      }, 1500)
+      
+      // Refresh the thread to show the new reply
       if (onThreadUpdate) {
         onThreadUpdate()
       }
       fetchFullThread(thread.thread_id)
+      
     } catch (error) {
       console.error('Error sending reply:', error)
+      setReplyError(error.response?.data?.detail || 'Failed to send reply. Please try again.')
     } finally {
       setSendingReply(false)
     }
@@ -180,7 +236,15 @@ const ThreadViewer = ({ thread, onThreadUpdate }) => {
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => handleReply(emails[emails.length - 1])}
+                onClick={() => {
+                  const lastEmail = emails[emails.length - 1]
+                  if (lastEmail) {
+                    handleReply(lastEmail)
+                  } else {
+                    console.error('No emails found to reply to')
+                  }
+                }}
+                disabled={emails.length === 0}
               >
                 <Reply className="h-4 w-4 mr-2" />
                 Reply
@@ -206,13 +270,17 @@ const ThreadViewer = ({ thread, onThreadUpdate }) => {
           
           {/* Reply Form */}
           {showReplyForm && (
-            <ReplyForm
-              replyData={replyData}
-              setReplyData={setReplyData}
-              onSend={() => sendReply(emails[emails.length - 1]?.gmail_id)}
-              onCancel={() => setShowReplyForm(false)}
-              sending={sendingReply}
-            />
+            <div ref={replyFormRef}>
+              <ReplyForm
+                replyData={replyData}
+                setReplyData={setReplyData}
+                onSend={() => sendReply(emails[emails.length - 1]?.gmail_id)}
+                onCancel={() => setShowReplyForm(false)}
+                sending={sendingReply}
+                success={replySuccess}
+                error={replyError}
+              />
+            </div>
           )}
         </div>
       </div>
@@ -317,21 +385,74 @@ const EmailCard = ({ email, isLatest, isExpanded, onToggleExpand, onReply }) => 
   )
 }
 
-const ReplyForm = ({ replyData, setReplyData, onSend, onCancel, sending }) => {
+const ReplyForm = ({ replyData, setReplyData, onSend, onCancel, sending, success, error }) => {
+  const [showCcBcc, setShowCcBcc] = useState(false)
+  
+  const isValidEmail = (email) => {
+    // Handle both formats: "email@domain.com" and "Display Name <email@domain.com>"
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const displayNameRegex = /^.+<([^\s@]+@[^\s@]+\.[^\s@]+)>$/
+    
+    if (emailRegex.test(email)) {
+      return true
+    }
+    
+    const match = email.match(displayNameRegex)
+    if (match && match[1]) {
+      return emailRegex.test(match[1])
+    }
+    
+    return false
+  }
+  
+  const hasValidRecipients = () => {
+    return replyData.to.length > 0 && replyData.to.every(email => isValidEmail(email))
+  }
+  
+  const canSend = () => {
+    return replyData.reply_body.trim() && hasValidRecipients() && !sending
+  }
+  
+  const handleKeyDown = (e) => {
+    if (e.ctrlKey && e.key === 'Enter') {
+      e.preventDefault()
+      if (canSend()) {
+        onSend()
+      }
+    }
+  }
+
   return (
     <Card className="border-2 border-primary/20">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-medium">Reply</h3>
-          <Button variant="ghost" size="sm" onClick={onCancel}>
+          <div className="flex items-center gap-2">
+            <h3 className="font-medium">Reply</h3>
+            {success && (
+              <div className="flex items-center gap-1 text-green-600">
+                <CheckCircle className="h-4 w-4" />
+                <span className="text-sm">Sent successfully!</span>
+              </div>
+            )}
+          </div>
+          <Button variant="ghost" size="sm" onClick={onCancel} disabled={sending}>
             <X className="h-4 w-4" />
           </Button>
         </div>
       </CardHeader>
       
       <CardContent className="space-y-4">
+        {/* Error Message */}
+        {error && (
+          <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-md text-red-700">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            <span className="text-sm">{error}</span>
+          </div>
+        )}
+        
+        {/* To Field */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">To:</label>
+          <label className="text-sm font-medium">To: <span className="text-red-500">*</span></label>
           <input
             type="text"
             value={replyData.to.join(', ')}
@@ -339,11 +460,77 @@ const ReplyForm = ({ replyData, setReplyData, onSend, onCancel, sending }) => {
               ...replyData,
               to: e.target.value.split(',').map(email => email.trim()).filter(Boolean)
             })}
-            className="w-full px-3 py-2 border rounded-md text-sm"
-            placeholder="recipient@example.com"
+            className={cn(
+              "w-full px-3 py-2 border rounded-md text-sm",
+              !hasValidRecipients() && replyData.to.length > 0 ? "border-red-300" : "border-gray-300"
+            )}
+            placeholder="recipient@example.com, another@example.com"
+            disabled={sending}
           />
+          {!hasValidRecipients() && replyData.to.length > 0 && (
+            <p className="text-xs text-red-600">Please enter valid email addresses</p>
+          )}
         </div>
         
+        {/* CC/BCC Toggle */}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowCcBcc(!showCcBcc)}
+            disabled={sending}
+          >
+            {showCcBcc ? (
+              <>
+                <Minus className="h-3 w-3 mr-1" />
+                Hide CC/BCC
+              </>
+            ) : (
+              <>
+                <Plus className="h-3 w-3 mr-1" />
+                Add CC/BCC
+              </>
+            )}
+          </Button>
+        </div>
+        
+        {/* CC Field */}
+        {showCcBcc && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">CC:</label>
+            <input
+              type="text"
+              value={replyData.cc.join(', ')}
+              onChange={(e) => setReplyData({
+                ...replyData,
+                cc: e.target.value.split(',').map(email => email.trim()).filter(Boolean)
+              })}
+              className="w-full px-3 py-2 border rounded-md text-sm"
+              placeholder="cc@example.com, another-cc@example.com"
+              disabled={sending}
+            />
+          </div>
+        )}
+        
+        {/* BCC Field */}
+        {showCcBcc && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">BCC:</label>
+            <input
+              type="text"
+              value={replyData.bcc.join(', ')}
+              onChange={(e) => setReplyData({
+                ...replyData,
+                bcc: e.target.value.split(',').map(email => email.trim()).filter(Boolean)
+              })}
+              className="w-full px-3 py-2 border rounded-md text-sm"
+              placeholder="bcc@example.com, another-bcc@example.com"
+              disabled={sending}
+            />
+          </div>
+        )}
+        
+        {/* Subject Field */}
         <div className="space-y-2">
           <label className="text-sm font-medium">Subject:</label>
           <input
@@ -351,33 +538,68 @@ const ReplyForm = ({ replyData, setReplyData, onSend, onCancel, sending }) => {
             value={replyData.reply_subject}
             onChange={(e) => setReplyData({...replyData, reply_subject: e.target.value})}
             className="w-full px-3 py-2 border rounded-md text-sm"
+            disabled={sending}
           />
         </div>
         
+        {/* Message Body */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">Message:</label>
+          <label className="text-sm font-medium">Message: <span className="text-red-500">*</span></label>
           <textarea
             value={replyData.reply_body}
             onChange={(e) => setReplyData({...replyData, reply_body: e.target.value})}
-            className="w-full px-3 py-2 border rounded-md text-sm min-h-[120px]"
-            placeholder="Type your reply..."
+            onKeyDown={handleKeyDown}
+            className="w-full px-3 py-2 border rounded-md text-sm min-h-[120px] resize-y"
+            placeholder="Type your reply... (Ctrl+Enter to send)"
+            disabled={sending}
           />
+          <div className="text-xs text-muted-foreground text-right">
+            {replyData.reply_body.length} characters
+          </div>
         </div>
         
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={sending}>
-            Cancel
-          </Button>
-          <Button onClick={onSend} disabled={sending || !replyData.reply_body.trim()}>
-            {sending ? (
-              <>Sending...</>
-            ) : (
-              <>
-                <Send className="h-4 w-4 mr-2" />
-                Send Reply
-              </>
+        {/* Action Buttons */}
+        <div className="flex justify-between items-center pt-2">
+          <div className="text-xs text-muted-foreground">
+            {showCcBcc && (replyData.cc.length > 0 || replyData.bcc.length > 0) && (
+              <span>
+                {replyData.cc.length > 0 && `CC: ${replyData.cc.length}`}
+                {replyData.cc.length > 0 && replyData.bcc.length > 0 && ', '}
+                {replyData.bcc.length > 0 && `BCC: ${replyData.bcc.length}`}
+              </span>
             )}
-          </Button>
+          </div>
+          
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onCancel} disabled={sending}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={onSend} 
+              disabled={!canSend()}
+              className={cn(
+                success && "bg-green-600 hover:bg-green-700"
+              )}
+              title="Send reply (Ctrl+Enter)"
+            >
+              {sending ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  Sending...
+                </>
+              ) : success ? (
+                <>
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Sent!
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Send Reply
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
