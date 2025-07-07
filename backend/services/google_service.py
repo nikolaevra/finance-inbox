@@ -492,10 +492,11 @@ class GoogleService:
             threads = []
             for thread_id, emails in threads_map.items():
                 # Sort emails within thread by date (oldest first for conversation flow)
-                emails.sort(key=lambda x: x.get('date_sent') or '', reverse=False)
+                # Use a very old date as fallback for None/empty date_sent to ensure consistent sorting
+                emails.sort(key=lambda x: x.get('date_sent') or '1970-01-01T00:00:00Z', reverse=False)
                 
                 # Get thread metadata from the latest email
-                latest_email = max(emails, key=lambda x: x.get('date_sent') or '')
+                latest_email = max(emails, key=lambda x: x.get('date_sent') or '1970-01-01T00:00:00Z')
                 
                 # Count unread emails in thread
                 unread_count = sum(1 for email in emails if email.get('is_unread', False))
@@ -523,7 +524,8 @@ class GoogleService:
                 threads.append(thread)
             
             # Sort threads by latest email date (newest first)
-            threads.sort(key=lambda x: x.get('latest_date_sent') or '', reverse=True)
+            # Use a very old date as fallback for None/empty date_sent to ensure consistent sorting
+            threads.sort(key=lambda x: x.get('latest_date_sent') or '1970-01-01T00:00:00Z', reverse=True)
             
             # Apply pagination to threads
             paginated_threads = threads[offset:offset + limit]
@@ -558,7 +560,7 @@ class GoogleService:
                 formatted_emails.append(formatted_email)
             
             # Get thread metadata from the latest email
-            latest_email = max(formatted_emails, key=lambda x: x.get('date_sent') or '')
+            latest_email = max(formatted_emails, key=lambda x: x.get('date_sent') or '1970-01-01T00:00:00Z')
             
             # Count unread emails in thread
             unread_count = sum(1 for email in formatted_emails if email.get('is_unread', False))
