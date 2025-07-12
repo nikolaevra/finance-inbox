@@ -335,7 +335,7 @@ class GoogleService:
             return False
 
     def _save_email_to_db(self, email_data: EmailDetails) -> bool:
-        """Save email to database"""
+        """Save email to database with categorization"""
         if not self.internal_user_id:
             logger.warning("❌ No internal_user_id available, cannot save email")
             return False
@@ -377,6 +377,27 @@ class GoogleService:
                 db_email_data['cc_email'] = email_data.cc_email
             if email_data.bcc_email:
                 db_email_data['bcc_email'] = email_data.bcc_email
+            
+            # Add email categorization using LLM
+            try:
+                from services.email_categorization_service import get_email_categorization_service
+                categorization_service = get_email_categorization_service()
+                categorization_result = categorization_service.categorize_email_with_metadata(db_email_data)
+                
+                # Add categorization fields to database data
+                if categorization_result['category']:
+                    db_email_data['category'] = categorization_result['category']
+                    db_email_data['category_confidence'] = categorization_result['category_confidence']
+                    db_email_data['categorized_at'] = categorization_result['categorized_at'].isoformat()
+                    db_email_data['category_prompt_version'] = categorization_result['category_prompt_version']
+                    
+                    logger.info(f"✅ Email categorized as: {categorization_result['category']} (confidence: {categorization_result['category_confidence']})")
+                else:
+                    logger.warning("⚠️ Email categorization failed - no category returned")
+                    
+            except Exception as e:
+                logger.error(f"❌ Email categorization failed: {str(e)}")
+                # Continue saving email even if categorization fails
             
             # Remove None values to avoid database issues
             db_email_data = {k: v for k, v in db_email_data.items() if v is not None}
@@ -434,7 +455,8 @@ class GoogleService:
             # Query emails with pagination, ordered by date (newest first)
             result = self.supabase.table("emails").select(
                 "id, gmail_id, subject, from_email, to_email, date_sent, snippet, "
-                "labels, has_attachments, size_estimate, is_processed, created_at"
+                "labels, has_attachments, size_estimate, is_processed, created_at, "
+                "category, category_confidence, categorized_at, category_prompt_version"
             ).eq("user_id", str(self.internal_user_id)).order("date_sent", desc=True).range(offset, offset + limit - 1).execute()
             
             if result.data:
@@ -466,7 +488,8 @@ class GoogleService:
             # Get all emails for the user, including thread_id
             result = self.supabase.table("emails").select(
                 "id, gmail_id, subject, from_email, to_email, date_sent, snippet, "
-                "labels, has_attachments, size_estimate, is_processed, created_at, thread_id"
+                "labels, has_attachments, size_estimate, is_processed, created_at, thread_id, "
+                "category, category_confidence, categorized_at, category_prompt_version"
             ).eq("user_id", str(self.internal_user_id)).order("date_sent", desc=True).execute()
             
             if not result.data:
@@ -638,7 +661,12 @@ class GoogleService:
             'is_important': is_important,
             'is_starred': is_starred,
             'is_processed': email.get('is_processed', False),
-            'created_at': email.get('created_at')
+            'created_at': email.get('created_at'),
+            # Email categorization fields
+            'category': email.get('category'),
+            'category_confidence': email.get('category_confidence'),
+            'categorized_at': email.get('categorized_at'),
+            'category_prompt_version': email.get('category_prompt_version')
         }
 
     def _format_full_email(self, email: dict) -> dict:

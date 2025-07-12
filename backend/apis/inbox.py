@@ -63,6 +63,8 @@ def sync_emails(max_results: int = 50, current_user_profile: dict = Depends(get_
         "source": "gmail_api"
     }
 
+
+
 @router.get("/email/{email_id}")
 def get_single_email(email_id: str, current_user_profile: dict = Depends(get_current_user_profile)):
     """Get detailed information for a single email from database"""

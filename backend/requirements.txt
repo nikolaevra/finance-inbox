@@ -31,6 +31,12 @@ google-api-python-client==2.110.0
 requests==2.31.0
 httpx==0.25.2
 
+# OpenAI for LLM categorization
+openai==1.51.2
+
+# YAML parsing for prompt configuration
+PyYAML==6.0.2
+
 # Date and time utilities (for email parsing)
 python-dateutil==2.8.2
 

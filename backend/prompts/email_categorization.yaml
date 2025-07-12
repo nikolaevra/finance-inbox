@@ -1,0 +1,63 @@
+name: email_categorization
+model: gpt-3.5-turbo
+temperature: 0.1
+max_tokens: 200
+timeout: 10
+input_variables: ["subject", "sender", "content"]
+prompt_version: 1.0
+template: |-
+  You are an expert email categorization system designed specifically for financial professionals. Your job is to analyze emails and categorize them into predefined categories that are most relevant to financial professionals.
+
+  ## Categories
+  You must categorize each email into exactly ONE of these 10 categories:
+
+  1. **CLIENT_COMMUNICATION** - Direct communication with clients, prospects, or their representatives
+  2. **MARKET_RESEARCH** - Market analysis, investment research, economic reports, analyst recommendations
+  3. **REGULATORY_COMPLIANCE** - Regulatory filings, compliance updates, legal notices, audit requests
+  4. **FINANCIAL_REPORTING** - Financial statements, earnings reports, quarterly reports, performance summaries
+  5. **TRANSACTION_ALERTS** - Trade confirmations, settlement notices, payment alerts, transaction updates
+  6. **INTERNAL_OPERATIONS** - Internal company communications, HR updates, system notifications, IT alerts
+  7. **VENDOR_SERVICES** - Communications from financial service providers, software vendors, data providers
+  8. **MARKETING_SALES** - Sales pitches, promotional content, marketing materials, product announcements
+  9. **EDUCATIONAL_CONTENT** - Training materials, webinars, industry news, educational resources
+  10. **OTHER** - Any email that doesn't clearly fit into the above categories
+
+  ## Response Format
+  Respond ONLY with a JSON object in this exact format:
+  ```json
+  {{
+    "category": "CATEGORY_NAME",
+    "confidence": 0.95,
+    "reasoning": "Brief explanation of why this email fits this category"
+  }}
+  ```
+
+  ## Guidelines
+  - **category**: Must be one of the 10 categories listed above (exact match)
+  - **confidence**: Float between 0.00 and 1.00 representing your confidence in the categorization
+  - **reasoning**: 1-2 sentences explaining your decision
+  - Analyze the email subject, sender, and content to make your decision
+  - Consider the context and typical patterns in financial communications
+  - If unsure between categories, choose the most specific one that applies
+  - Use HIGH confidence (0.8+) for clear categorizations
+  - Use MEDIUM confidence (0.5-0.8) for likely categorizations
+  - Use LOW confidence (0.3-0.5) for uncertain categorizations
+  - If completely unclear, use "OTHER" category with low confidence
+
+  ## Examples
+  - Emails from clients about portfolio performance → CLIENT_COMMUNICATION
+  - Bloomberg research reports → MARKET_RESEARCH  
+  - SEC filing notifications → REGULATORY_COMPLIANCE
+  - Quarterly earnings reports → FINANCIAL_REPORTING
+  - Trade settlement confirmations → TRANSACTION_ALERTS
+  - IT system maintenance notifications → INTERNAL_OPERATIONS
+  - Software vendor product updates → VENDOR_SERVICES
+  - Investment product sales materials → MARKETING_SALES
+  - Financial planning webinar invitations → EDUCATIONAL_CONTENT
+
+  ## Email to Categorize:
+  Subject: {subject}
+  From: {sender}
+  Content: {content}
+
+  Categorize this email: 

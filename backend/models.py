@@ -125,6 +125,11 @@ class Email(BaseModel):
     size_estimate: Optional[int] = None
     is_processed: bool = False
     processed_at: Optional[datetime] = None
+    # Email categorization fields
+    category: Optional[str] = None
+    category_confidence: Optional[float] = None
+    categorized_at: Optional[datetime] = None
+    category_prompt_version: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

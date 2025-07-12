@@ -3,6 +3,7 @@ import { Card } from './ui/card'
 import { Badge } from './ui/badge'
 import { Paperclip, Star, AlertCircle, Users } from 'lucide-react'
 import { cn } from '../lib/utils'
+import EmailCategoryBadge from './EmailCategoryBadge'
 
 const ThreadList = ({ threads, selectedThread, onThreadSelect, loading }) => {
   if (loading) {
@@ -98,6 +99,17 @@ const ThreadListItem = ({ thread, isSelected, onClick }) => {
           <div className="text-xs text-muted-foreground truncate mb-2">
             {thread.latest_snippet}
           </div>
+          
+          {/* Show category badge if available */}
+          {thread.emails && thread.emails.length > 0 && thread.emails[0].category && (
+            <div className="mt-2">
+              <EmailCategoryBadge 
+                category={thread.emails[0].category}
+                confidence={thread.emails[0].category_confidence}
+                className="text-xs"
+              />
+            </div>
+          )}
         </div>
         
         <div className="text-xs text-muted-foreground flex-shrink-0">
