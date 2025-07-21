@@ -26,6 +26,9 @@ export const API_ENDPOINTS = {
   SETTINGS: {
     CONNECTIONS: `${API_BASE_URL}/settings/connections`,
     DISCONNECT: (provider) => `${API_BASE_URL}/settings/connections/${provider}/disconnect`,
+    PROMPT: `${API_BASE_URL}/settings/prompt`,
+    PROMPT_RESET: `${API_BASE_URL}/settings/prompt/reset`,
+    PROMPT_VALIDATE: `${API_BASE_URL}/settings/prompt/validate`,
   },
   
   // Google OAuth endpoints

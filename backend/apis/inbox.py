@@ -24,7 +24,7 @@ class EmailReplyRequest(BaseModel):
 @router.get("/")
 def get_inbox(limit: int = 50, offset: int = 0, current_user_profile: dict = Depends(get_current_user_profile)):
     """Get user's inbox organized by email threads"""
-    google_service = GoogleService(internal_user_id=current_user_profile["id"])
+    google_service = GoogleService(internal_user_id=current_user_profile["user_id"])
     threads = google_service.get_inbox_threads(limit=limit, offset=offset)
     
     # Calculate total email count across all threads
@@ -42,7 +42,7 @@ def get_inbox(limit: int = 50, offset: int = 0, current_user_profile: dict = Dep
 @router.get("/emails")
 def get_emails(limit: int = 50, offset: int = 0, current_user_profile: dict = Depends(get_current_user_profile)):
     """Get user's emails as individual items (non-threaded view)"""
-    google_service = GoogleService(internal_user_id=current_user_profile["id"])
+    google_service = GoogleService(internal_user_id=current_user_profile["user_id"])
     emails = google_service.get_inbox_emails(limit=limit, offset=offset)
     return {
         "emails": emails,
@@ -55,7 +55,7 @@ def get_emails(limit: int = 50, offset: int = 0, current_user_profile: dict = De
 @router.post("/emails/sync")
 def sync_emails(max_results: int = 50, current_user_profile: dict = Depends(get_current_user_profile)):
     """Fetch emails from Gmail and store them in database"""
-    google_service = GoogleService(internal_user_id=current_user_profile["id"])
+    google_service = GoogleService(internal_user_id=current_user_profile["user_id"])
     emails = google_service.fetch_gmail_emails(max_results=max_results)
     return {
         "message": f"Successfully synced {len(emails)} emails",
@@ -68,7 +68,7 @@ def sync_emails(max_results: int = 50, current_user_profile: dict = Depends(get_
 @router.get("/email/{email_id}")
 def get_single_email(email_id: str, current_user_profile: dict = Depends(get_current_user_profile)):
     """Get detailed information for a single email from database"""
-    google_service = GoogleService(internal_user_id=current_user_profile["id"])
+    google_service = GoogleService(internal_user_id=current_user_profile["user_id"])
     email = google_service.get_single_email_from_db(email_id)
     
     if not email:
@@ -82,7 +82,7 @@ def get_single_email(email_id: str, current_user_profile: dict = Depends(get_cur
 @router.get("/thread/{thread_id}")
 def get_thread(thread_id: str, current_user_profile: dict = Depends(get_current_user_profile)):
     """Get a specific email thread with all emails in conversation"""
-    google_service = GoogleService(internal_user_id=current_user_profile["id"])
+    google_service = GoogleService(internal_user_id=current_user_profile["user_id"])
     thread = google_service.get_thread_by_id(thread_id)
     
     if not thread:
@@ -98,7 +98,7 @@ def reply_to_email(email_id: str, reply_request: EmailReplyRequest, current_user
     """Reply to an email using Gmail API with customizable recipients"""
     logger.info(f"📤 Processing reply request for email {email_id}")
     
-    google_service = GoogleService(internal_user_id=current_user_profile["id"])
+    google_service = GoogleService(internal_user_id=current_user_profile["user_id"])
     
     # Send the reply using GoogleService with all recipient options
     result = google_service.send_email_reply(

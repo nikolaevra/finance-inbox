@@ -106,10 +106,11 @@ class AuthService:
     def get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get user profile from users table"""
         try:
-            result = self.supabase.table("users").select("*").eq("supabase_user_id", user_id).execute()
+            # The user_id from the token 'sub' claim corresponds to 'supabase_user_id' in our public 'users' table
+            result = self.supabase.table("users").select("*").eq("supabase_user_id", user_id).single().execute()
             
             if result.data:
-                return result.data[0]
+                return result.data
             else:
                 logger.warning(f"No user profile found for user_id: {user_id}")
                 return None
@@ -200,18 +201,43 @@ async def get_current_user_auth_data(credentials: HTTPAuthorizationCredentials =
 
 # Dependency to get current user profile from JWT token with automatic refresh
 async def get_current_user_profile(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
-    """Dependency to extract user profile from JWT token with automatic refresh"""
-    # First get the auth data (which handles token refresh)
-    user_data = await get_current_user_auth_data(credentials)
+    """
+    Dependency to extract user profile from JWT token.
+    This is the primary method for protecting routes and getting the current user.
+    """
+    # First, verify the token and get the basic user data (including user_id from 'sub' claim)
+    user_auth_data = await get_current_user_auth_data(credentials)
+    user_id = user_auth_data.get("user_id")
+
+    if not user_id:
+        # This case should ideally be caught by get_current_user_auth_data, but as a safeguard:
+        logger.error("Critical: User auth data is missing user_id after token verification.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not determine user identity from token."
+        )
+
+    # Now, fetch the detailed user profile from the database
+    user_profile = auth_service.get_user_profile(user_id)
     
-    # Get the user profile from the database
-    user_profile = auth_service.get_user_profile(user_data["user_id"])
     if not user_profile:
-        logger.error(f"No user profile found for Supabase user {user_data['user_id']}")
+        logger.error(f"No user profile found in the database for a valid user token (user_id: {user_id})")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User profile not found. Please contact support."
+            detail="User profile not found. The user may have been deleted."
         )
+    
+    # Ensure we have the user_id from the database (the actual primary key 'id')
+    # This is what other tables reference, not the supabase_user_id
+    if 'id' in user_profile:
+        user_profile['user_id'] = user_profile['id']  # Use the database primary key
+    else:
+        # Fallback: if somehow 'id' is missing, use the supabase_user_id
+        logger.warning(f"User profile missing 'id' field for user {user_id}")
+        user_profile['user_id'] = user_id
+    
+    # Also include the supabase_user_id for reference
+    user_profile['supabase_user_id'] = user_id
     
     return user_profile
 

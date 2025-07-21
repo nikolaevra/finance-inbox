@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class EmailCategorizationService:
     """Service for categorizing emails using OpenAI's API"""
     
-    def __init__(self):
+    def __init__(self, user_id: str = None):
         # Validate OpenAI API key
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
@@ -27,20 +27,42 @@ class EmailCategorizationService:
         except Exception as e:
             raise Exception(f"Failed to initialize OpenAI client: {str(e)}")
         
-        # Load configuration from YAML (will raise exception if failed)
-        self.config = self._load_config()
+        # Store user ID for user-specific prompt configuration
+        self.user_id = user_id
+        
+        # Initialize configuration - will be loaded per-request if user_id is provided
+        if user_id:
+            # Load user-specific configuration from database
+            self.config = self._load_user_config(user_id)
+        else:
+            # Load fallback YAML configuration
+            self.config = self._load_yaml_config()
+            
         self.prompt_version = self.config.get("prompt_version", "1.0")
-        self.model = self.config.get("model", "gpt-4o-mini")
+        self.model = self.config.get("model", "gpt-3.5-turbo")
         self.temperature = self.config.get("temperature", 0.1)
         self.max_tokens = self.config.get("max_tokens", 200)
         self.timeout = self.config.get("timeout", 10)
         
-    def _load_config(self) -> Dict:
-        """Load the categorization configuration from YAML file"""
+    def _load_user_config(self, user_id: str) -> Dict:
+        """Load user-specific prompt configuration from database"""
+        try:
+            from services.user_prompt_service import user_prompt_service
+            config = user_prompt_service.get_user_prompt_config(user_id)
+            logger.info(f"✅ Loaded user prompt config for {user_id}: v{config.get('prompt_version')}")
+            return config
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load user config for {user_id}: {str(e)}")
+            # Fallback to YAML config
+            return self._load_yaml_config()
+    
+    def _load_yaml_config(self) -> Dict:
+        """Load the fallback categorization configuration from YAML file"""
         config_path = Path(__file__).parent.parent / "prompts" / "email_categorization.yaml"
         
         if not config_path.exists():
-            raise FileNotFoundError(f"Email categorization config file not found: {config_path}")
+            logger.warning(f"⚠️ YAML config file not found: {config_path}")
+            return self._get_hardcoded_fallback()
         
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
@@ -51,27 +73,33 @@ class EmailCategorizationService:
             missing_fields = [field for field in required_fields if not config.get(field)]
             
             if missing_fields:
-                raise ValueError(f"Missing required fields in config: {missing_fields}")
+                logger.warning(f"⚠️ Missing required fields in YAML config: {missing_fields}")
+                return self._get_hardcoded_fallback()
                 
-            logger.info(f"✅ Loaded email categorization config: {config.get('name', 'unnamed')} v{config.get('prompt_version')}")
+            logger.info(f"✅ Loaded fallback YAML config: {config.get('name', 'unnamed')} v{config.get('prompt_version')}")
             return config
-            
-        except yaml.YAMLError as e:
-            raise ValueError(f"Invalid YAML in config file: {str(e)}")
         except Exception as e:
-            raise Exception(f"Failed to load email categorization config: {str(e)}")
+            logger.warning(f"⚠️ Failed to load YAML config: {str(e)}")
+            raise e
     
-    def categorize_email(self, email_data: Dict) -> Tuple[Optional[str], Optional[float], Optional[str]]:
+    def categorize_email(self, email_data: Dict, user_id: str = None) -> Tuple[Optional[str], Optional[float], Optional[str]]:
         """
         Categorize an email using OpenAI's API
         
         Args:
             email_data: Dictionary containing email information
+            user_id: User ID for user-specific prompt configuration
             
         Returns:
             Tuple of (category, confidence, reasoning) or (None, None, None) if failed
         """
         try:
+            # Get user-specific config if user_id is provided
+            if user_id and user_id != self.user_id:
+                config = self._load_user_config(user_id)
+            else:
+                config = self.config
+                
             # Extract email content for categorization
             subject = email_data.get('subject', '')
             sender = email_data.get('from_email', '')
@@ -84,7 +112,7 @@ class EmailCategorizationService:
             content = content[:1000] + "..." if len(content) > 1000 else content
             
             # Format the prompt using the template and input variables
-            template = self.config.get("template", "")
+            template = config.get("template", "")
             prompt = template.format(
                 subject=subject,
                 sender=sender,
@@ -95,14 +123,14 @@ class EmailCategorizationService:
             
             # Make API call to OpenAI using configuration parameters
             response = self.client.chat.completions.create(
-                model=self.model,
+                model=config.get("model", "gpt-3.5-turbo"),
                 messages=[
                     {"role": "system", "content": "You are an expert email categorization system for financial professionals."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                timeout=self.timeout
+                temperature=config.get("temperature", 0.1),
+                max_tokens=config.get("max_tokens", 200),
+                timeout=config.get("timeout", 10)
             )
             
             # Parse the response
@@ -137,23 +165,30 @@ class EmailCategorizationService:
             logger.error(f"❌ Error categorizing email: {str(e)}")
             return None, None, None
     
-    def categorize_email_with_metadata(self, email_data: Dict) -> Dict:
+    def categorize_email_with_metadata(self, email_data: Dict, user_id: str = None) -> Dict:
         """
         Categorize an email and return full metadata
         
         Args:
             email_data: Dictionary containing email information
+            user_id: User ID for user-specific prompt configuration
             
         Returns:
             Dictionary with category, confidence, reasoning, and metadata
         """
-        category, confidence, reasoning = self.categorize_email(email_data)
+        category, confidence, reasoning = self.categorize_email(email_data, user_id)
         
+        # Get prompt version from config
+        if user_id and user_id != self.user_id:
+            config = self._load_user_config(user_id)
+        else:
+            config = self.config
+            
         return {
             'category': category,
             'category_confidence': confidence,
             'categorized_at': datetime.now(timezone.utc),
-            'category_prompt_version': str(self.prompt_version),
+            'category_prompt_version': str(config.get('prompt_version', '1.0')),
             'reasoning': reasoning
         }
     
@@ -212,7 +247,7 @@ class EmailCategorizationService:
             for email in emails_to_process:
                 try:
                     # Categorize the email
-                    categorization_result = self.categorize_email_with_metadata(email)
+                    categorization_result = self.categorize_email_with_metadata(email, user_id)
                     
                     if categorization_result['category']:
                         # Update the email with categorization data

@@ -382,7 +382,7 @@ class GoogleService:
             try:
                 from services.email_categorization_service import get_email_categorization_service
                 categorization_service = get_email_categorization_service()
-                categorization_result = categorization_service.categorize_email_with_metadata(db_email_data)
+                categorization_result = categorization_service.categorize_email_with_metadata(db_email_data, str(self.internal_user_id))
                 
                 # Add categorization fields to database data
                 if categorization_result['category']:
