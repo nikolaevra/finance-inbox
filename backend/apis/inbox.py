@@ -14,7 +14,7 @@ router = APIRouter(prefix="/inbox", tags=["Inbox"])
 class EmailReplyRequest(BaseModel):
     """Request model for email replies"""
     reply_body: str
-    reply_subject: str = None
+    reply_subject: Optional[str] = None
     to: Optional[List[str]] = None  # Override reply recipients
     cc: Optional[List[str]] = None  # Add CC recipients
     bcc: Optional[List[str]] = None  # Add BCC recipients
@@ -104,7 +104,7 @@ def reply_to_email(email_id: str, reply_request: EmailReplyRequest, current_user
     result = google_service.send_email_reply(
         original_email_id=email_id,
         reply_body=reply_request.reply_body,
-        reply_subject=reply_request.reply_subject,
+        reply_subject=reply_request.reply_subject or "",
         to=reply_request.to,
         cc=reply_request.cc,
         bcc=reply_request.bcc

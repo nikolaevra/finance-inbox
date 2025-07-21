@@ -81,7 +81,7 @@ class AuthService:
                     access_token=response.session.access_token,
                     refresh_token=response.session.refresh_token,
                     token_type="bearer",
-                    expires_at=response.session.expires_at,
+                    expires_at=response.session.expires_at if response.session.expires_at is not None else 0,
                     user={
                         "id": response.user.id,
                         "email": response.user.email,
@@ -129,7 +129,7 @@ class AuthService:
                 if self.user_auth_data:
                     self.user_auth_data.access_token = response.session.access_token
                     self.user_auth_data.refresh_token = response.session.refresh_token
-                    self.user_auth_data.expires_at = response.session.expires_at
+                    self.user_auth_data.expires_at = response.session.expires_at if response.session.expires_at is not None else 0
                     return self.user_auth_data.to_dict()
                 else:
                     # If no stored auth data, create a minimal response
@@ -155,8 +155,7 @@ class AuthService:
     def logout(self, token: str) -> Dict[str, str]:
         """Logout user and invalidate session"""
         try:
-            # Set the session token for the logout
-            self.supabase.auth.set_session(token, None)
+            # Sign out the user
             self.supabase.auth.sign_out()
             
             # Clear stored auth data
