@@ -23,6 +23,9 @@ def get_user_connections(current_user_profile: dict = Depends(get_current_user_p
 @router.post("/connections/{provider}/disconnect")
 def disconnect_provider(provider: str, current_user_profile: dict = Depends(get_current_user_profile)):
     """Disconnect a specific provider"""
+
+    logger.info(f"Disconnecting provider: {provider}. Current user profile: {current_user_profile}")
+
     # Validate provider
     try:
         connection_provider = ConnectionProvider(provider.lower())
