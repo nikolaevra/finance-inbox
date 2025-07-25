@@ -20,6 +20,8 @@ export const API_ENDPOINTS = {
     EMAIL: (emailId) => `${API_BASE_URL}/inbox/email/${emailId}`,
     THREAD: (threadId) => `${API_BASE_URL}/inbox/thread/${threadId}`,
     REPLY: (emailId) => `${API_BASE_URL}/inbox/email/${emailId}/reply`,
+    MARK_EMAIL_READ: (emailId) => `${API_BASE_URL}/inbox/email/${emailId}/read`,
+    MARK_THREAD_READ: (threadId) => `${API_BASE_URL}/inbox/thread/${threadId}/read`,
   },
   
   // Settings endpoints

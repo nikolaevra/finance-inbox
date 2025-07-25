@@ -56,12 +56,29 @@ def get_emails(limit: int = 50, offset: int = 0, current_user_profile: dict = De
 def sync_emails(max_results: int = 50, current_user_profile: dict = Depends(get_current_user_profile)):
     """Fetch emails from Gmail and store them in database"""
     google_service = GoogleService(internal_user_id=current_user_profile["user_id"])
-    emails = google_service.fetch_gmail_emails(max_results=max_results)
+    emails = google_service.fetch_gmail_emails(max_results=max_results, only_new=True)
     return {
         "message": f"Successfully synced {len(emails)} emails",
         "emails_synced": len(emails),
         "source": "gmail_api"
     }
+
+@router.put("/email/{email_id}/read")
+def mark_email_as_read(email_id: str, current_user_profile: dict = Depends(get_current_user_profile)):
+    """Mark an email as read"""
+    google_service = GoogleService(internal_user_id=current_user_profile["user_id"])
+    success = google_service.mark_email_as_read(email_id)
+    if success:
+        return {"message": "Email marked as read", "email_id": email_id}
+    else:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+@router.put("/thread/{thread_id}/read")
+def mark_thread_as_read(thread_id: str, current_user_profile: dict = Depends(get_current_user_profile)):
+    """Mark all emails in a thread as read"""
+    google_service = GoogleService(internal_user_id=current_user_profile["user_id"])
+    count = google_service.mark_thread_as_read(thread_id)
+    return {"message": f"Marked {count} emails as read in thread", "thread_id": thread_id}
 
 
 

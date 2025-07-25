@@ -369,7 +369,8 @@ class GoogleService:
                 "body_html": email_data.body.get('html'),
                 "labels": email_data.labels,
                 "has_attachments": email_data.has_attachments,
-                "size_estimate": email_data.size_estimate
+                "size_estimate": email_data.size_estimate,
+                "is_read": False  # New emails are always unread
             }
             
             # Add CC and BCC fields if available (for sent emails)
@@ -443,6 +444,59 @@ class GoogleService:
             logger.error(f"❌ Error retrieving emails from database for user {self.internal_user_id}: {str(e)}")
             return []
 
+    def _get_most_recent_email_date(self) -> Optional[datetime]:
+        """Get the date of the most recent email in the database"""
+        if not self.internal_user_id:
+            return None
+        
+        try:
+            result = self.supabase.table("emails").select("date_sent").eq("user_id", str(self.internal_user_id)).order("date_sent", desc=True).limit(1).execute()
+            
+            if result.data and result.data[0].get('date_sent'):
+                # Parse the date string back to datetime
+                from dateutil.parser import parse
+                return parse(result.data[0]['date_sent'])
+            return None
+        except Exception as e:
+            logger.error(f"❌ Error getting most recent email date: {str(e)}")
+            return None
+
+    def _email_exists_in_db(self, gmail_id: str) -> bool:
+        """Check if an email already exists in the database"""
+        if not self.internal_user_id:
+            return False
+        
+        try:
+            result = self.supabase.table("emails").select("id").eq("user_id", str(self.internal_user_id)).eq("gmail_id", gmail_id).execute()
+            return bool(result.data)
+        except Exception as e:
+            logger.error(f"❌ Error checking if email exists: {str(e)}")
+            return False
+
+    def mark_email_as_read(self, email_id: str) -> bool:
+        """Mark a single email as read"""
+        if not self.internal_user_id:
+            return False
+        
+        try:
+            result = self.supabase.table("emails").update({"is_read": True}).eq("user_id", str(self.internal_user_id)).eq("id", email_id).execute()
+            return bool(result.data)
+        except Exception as e:
+            logger.error(f"❌ Error marking email as read: {str(e)}")
+            return False
+
+    def mark_thread_as_read(self, thread_id: str) -> int:
+        """Mark all emails in a thread as read"""
+        if not self.internal_user_id:
+            return 0
+        
+        try:
+            result = self.supabase.table("emails").update({"is_read": True}).eq("user_id", str(self.internal_user_id)).eq("thread_id", thread_id).execute()
+            return len(result.data) if result.data else 0
+        except Exception as e:
+            logger.error(f"❌ Error marking thread as read: {str(e)}")
+            return 0
+
     def get_inbox_emails(self, limit: int = 50, offset: int = 0) -> List[dict]:
         """Get inbox emails with pagination and enhanced formatting"""
         if not self.internal_user_id:
@@ -456,7 +510,7 @@ class GoogleService:
             result = self.supabase.table("emails").select(
                 "id, gmail_id, subject, from_email, to_email, date_sent, snippet, "
                 "labels, has_attachments, size_estimate, is_processed, created_at, "
-                "category, category_confidence, categorized_at, category_prompt_version"
+                "category, category_confidence, categorized_at, category_prompt_version, is_read"
             ).eq("user_id", str(self.internal_user_id)).order("date_sent", desc=True).range(offset, offset + limit - 1).execute()
             
             if result.data:
@@ -489,7 +543,7 @@ class GoogleService:
             result = self.supabase.table("emails").select(
                 "id, gmail_id, subject, from_email, to_email, date_sent, snippet, "
                 "labels, has_attachments, size_estimate, is_processed, created_at, thread_id, "
-                "category, category_confidence, categorized_at, category_prompt_version"
+                "category, category_confidence, categorized_at, category_prompt_version, is_read"
             ).eq("user_id", str(self.internal_user_id)).order("date_sent", desc=True).execute()
             
             if not result.data:
@@ -641,7 +695,7 @@ class GoogleService:
         
         # Determine email status
         labels = email.get('labels', [])
-        is_unread = 'UNREAD' in labels
+        is_unread = not email.get('is_read', False)
         is_important = 'IMPORTANT' in labels
         is_starred = 'STARRED' in labels
         
@@ -786,9 +840,14 @@ class GoogleService:
             logger.error(f"❌ OAuth callback failed for user {self.internal_user_id}: {str(e)}")
             return {"error": f"Authentication failed: {str(e)}"}
 
-    def fetch_gmail_emails(self, max_results: int = 10) -> list:
-        """Fetch Gmail emails using stored credentials"""
-        logger.info(f"📧 Starting Gmail email fetch for user {self.internal_user_id}")
+    def fetch_gmail_emails(self, max_results: int = 10, only_new: bool = False) -> list:
+        """Fetch Gmail emails using stored credentials
+        
+        Args:
+            max_results: Maximum number of emails to fetch
+            only_new: If True, only fetch emails that don't exist in database
+        """
+        logger.info(f"📧 Starting Gmail email fetch for user {self.internal_user_id} (only_new={only_new})")
         
         # Get authenticated Gmail service
         service, error = self._get_authenticated_gmail_service()
@@ -797,20 +856,36 @@ class GoogleService:
             return []
 
         try:
+            # Build query for Gmail API
+            query = ""
+            if only_new:
+                # Get the most recent email date from database
+                last_email = self._get_most_recent_email_date()
+                if last_email:
+                    # Format date for Gmail API query
+                    query = f"after:{last_email.strftime('%Y/%m/%d')}"
+                    logger.info(f"🔍 Fetching emails newer than {last_email}")
             
             # Fetch messages
             logger.info(f"🌐 Fetching messages from Gmail API (max {max_results})")
             result = service.users().messages().list(
                 userId='me', 
-                maxResults=max_results
+                maxResults=max_results,
+                q=query if query else None
             ).execute()
             
             messages = result.get('messages', [])
             logger.info(f"📨 Found {len(messages)} messages")
             
             emails = []
+            new_emails_count = 0
             
             for i, msg in enumerate(messages):
+                # Check if email already exists in database
+                if only_new and self._email_exists_in_db(msg['id']):
+                    logger.debug(f"⏭️ Skipping existing email: {msg['id']}")
+                    continue
+                
                 logger.debug(f"📧 Fetching details for message {i+1}/{len(messages)}: {msg['id']}")
                 msg_data = service.users().messages().get(
                     userId='me', 
@@ -823,9 +898,10 @@ class GoogleService:
                 emails.append(email_details.to_dict())  # Convert to dict for API compatibility
                 
                 # Save email to database
-                self._save_email_to_db(email_details)
+                if self._save_email_to_db(email_details):
+                    new_emails_count += 1
             
-            logger.info(f"✅ Successfully fetched and saved {len(emails)} emails for user {self.internal_user_id}")
+            logger.info(f"✅ Successfully fetched and saved {new_emails_count} new emails for user {self.internal_user_id}")
             
             # Update last sync time
             self._update_last_sync()
