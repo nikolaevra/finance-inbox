@@ -1,0 +1,172 @@
+/* Finance Inbox App Style Protection */
+/* These styles ensure that email content cannot override critical application styles */
+
+/* High specificity selectors to protect app title and navigation */
+.fi-app-title,
+.fi-app-title:not(.email-content),
+.fi-app-title:not(.email-content *) {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji" !important;
+  font-weight: 700 !important;
+  font-size: 1.25rem !important;
+  line-height: 1.75rem !important;
+  color: inherit !important;
+  text-decoration: none !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Protect inbox title */
+.fi-inbox-title,
+.fi-inbox-title:not(.email-content),
+.fi-inbox-title:not(.email-content *) {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji" !important;
+  font-weight: 700 !important;
+  font-size: 1.5rem !important;
+  line-height: 2rem !important;
+  color: inherit !important;
+  text-decoration: none !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.fi-inbox-header-content,
+.fi-inbox-header-content:not(.email-content),
+.fi-inbox-header-content:not(.email-content *) {
+  display: flex !important;
+  align-items: center !important;
+  gap: 1rem !important;
+}
+
+/* Protect notification badge */
+.fi-new-email-badge,
+.fi-new-email-badge:not(.email-content),
+.fi-new-email-badge:not(.email-content *) {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  background-color: #dbeafe !important;
+  color: #1e40af !important;
+  padding: 0.25rem 0.75rem !important;
+  border-radius: 9999px !important;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite !important;
+}
+
+.fi-bell-icon,
+.fi-bell-icon:not(.email-content),
+.fi-bell-icon:not(.email-content *) {
+  height: 1rem !important;
+  width: 1rem !important;
+}
+
+.fi-badge-text,
+.fi-badge-text:not(.email-content),
+.fi-badge-text:not(.email-content *) {
+  font-size: 0.875rem !important;
+  line-height: 1.25rem !important;
+  font-weight: 500 !important;
+}
+
+/* Protect sidebar styles */
+.fi-sidebar-header-content,
+.fi-sidebar-header-content:not(.email-content),
+.fi-sidebar-header-content:not(.email-content *) {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+}
+
+.fi-sidebar-logo,
+.fi-sidebar-logo:not(.email-content),
+.fi-sidebar-logo:not(.email-content *) {
+  height: 1.5rem !important;
+  width: 1.5rem !important;
+  flex-shrink: 0 !important;
+}
+
+/* Protect email content containers from outside interference */
+.fi-email-html-iframe {
+  border: none !important;
+  background: transparent !important;
+  width: 100% !important;
+  min-height: 200px !important;
+}
+
+.fi-email-text-content {
+  white-space: pre-wrap !important;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace !important;
+  font-size: 0.875rem !important;
+  line-height: 1.5 !important;
+}
+
+.fi-email-body {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  padding: 1.5rem !important;
+}
+
+.fi-thread-email-content {
+  isolation: isolate !important;
+}
+
+.fi-email-fallback {
+  text-align: center !important;
+  padding: 2rem 0 !important;
+}
+
+/* Ensure iframe sandboxing works properly */
+iframe.fi-email-html-iframe {
+  pointer-events: auto !important;
+  display: block !important;
+  border: 0 !important;
+  outline: none !important;
+  background: transparent !important;
+}
+
+/* Container isolation */
+.fi-email-body,
+.fi-thread-email-content {
+  contain: style layout !important;
+  isolation: isolate !important;
+}
+
+/* Prevent any global font or style resets from email content */
+body:not(.email-content),
+html:not(.email-content) {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif !important;
+}
+
+/* Ensure critical UI elements maintain their styles */
+[class*="fi-"]:not(.email-content):not(.email-content *) {
+  font-family: inherit !important;
+  color: inherit !important;
+  line-height: inherit !important;
+}
+
+/* Additional protection for common conflicting styles */
+.fi-app-title * {
+  font-family: inherit !important;
+  font-weight: inherit !important;
+  font-size: inherit !important;
+  color: inherit !important;
+  text-decoration: inherit !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Ensure buttons and interactive elements maintain their appearance */
+button:not(.email-content):not(.email-content *),
+.fi-sidebar-header-content button,
+[class*="fi-"] button {
+  font-family: inherit !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  color: inherit !important;
+  background: inherit !important;
+  border: inherit !important;
+  padding: inherit !important;
+  margin: inherit !important;
+} 

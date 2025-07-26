@@ -117,14 +117,14 @@ const Inbox = () => {
       {/* Header */}
       <div className="border-b px-6 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-2xl font-bold">Inbox</h1>
+          <div className="fi-inbox-header-content flex items-center gap-4">
+            <h1 className="fi-inbox-title text-2xl font-bold">Inbox</h1>
             
             {/* New email notification */}
             {newEmailCount > 0 && (
-              <div className="flex items-center gap-2 bg-blue-100 text-blue-800 px-3 py-1 rounded-full animate-pulse">
-                <Bell className="h-4 w-4" />
-                <span className="text-sm font-medium">{newEmailCount} new</span>
+              <div className="fi-new-email-badge flex items-center gap-2 bg-blue-100 text-blue-800 px-3 py-1 rounded-full animate-pulse">
+                <Bell className="fi-bell-icon h-4 w-4" />
+                <span className="fi-badge-text text-sm font-medium">{newEmailCount} new</span>
               </div>
             )}
             

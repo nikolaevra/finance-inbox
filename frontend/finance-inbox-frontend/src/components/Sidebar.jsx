@@ -53,9 +53,9 @@ const Sidebar = ({ activeSection, onSectionChange }) => {
         "border-b flex items-center justify-between",
         isCollapsed ? "p-3" : "p-6"
       )}>
-        <div className="flex items-center gap-2">
-          <Mail className="h-6 w-6 text-primary flex-shrink-0" />
-          {!isCollapsed && <h1 className="text-xl font-bold">Finance Inbox</h1>}
+        <div className="fi-sidebar-header-content flex items-center gap-2">
+          <Mail className="fi-sidebar-logo h-6 w-6 text-primary flex-shrink-0" />
+          {!isCollapsed && <h1 className="fi-app-title text-xl font-bold">Finance Inbox</h1>}
         </div>
         
         <Button

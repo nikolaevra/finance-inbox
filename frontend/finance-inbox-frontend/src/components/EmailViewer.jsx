@@ -7,6 +7,7 @@ import { cn } from '../lib/utils'
 import axios from 'axios'
 import { API_ENDPOINTS } from '../config/api'
 import { useAuth } from '../contexts/AuthContext'
+import EmailContentViewer from './EmailContentViewer'
 
 const EmailViewer = ({ email, onEmailUpdate }) => {
   const [fullEmail, setFullEmail] = useState(null)
@@ -160,31 +161,12 @@ const EmailViewer = ({ email, onEmailUpdate }) => {
                 )}
                 
                 {/* Email Body */}
-                <div className="flex-1 overflow-y-auto p-6">
-                  {activeTab === 'text' && fullEmail.body.text ? (
-                    <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed">
-                      {fullEmail.body.text}
-                    </div>
-                  ) : activeTab === 'html' && fullEmail.body.html ? (
-                    <div 
-                      className="prose prose-sm max-w-none prose-headings:text-foreground prose-p:text-foreground prose-a:text-primary hover:prose-a:text-primary/80"
-                      dangerouslySetInnerHTML={{ __html: fullEmail.body.html }}
-                    />
-                  ) : fullEmail.body.text ? (
-                    <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed">
-                      {fullEmail.body.text}
-                    </div>
-                  ) : fullEmail.body.html ? (
-                    <div 
-                      className="prose prose-sm max-w-none prose-headings:text-foreground prose-p:text-foreground prose-a:text-primary hover:prose-a:text-primary/80"
-                      dangerouslySetInnerHTML={{ __html: fullEmail.body.html }}
-                    />
-                  ) : (
-                    <div className="text-muted-foreground text-center py-8">
-                      <div className="text-lg mb-2">No Content Available</div>
-                      <div className="text-sm">This email may not have readable content or it hasn't been fully synced yet.</div>
-                    </div>
-                  )}
+                <div className="fi-email-body flex-1 overflow-y-auto p-6">
+                  <EmailContentViewer
+                    htmlContent={fullEmail.body.html}
+                    textContent={fullEmail.body.text}
+                    activeTab={activeTab}
+                  />
                 </div>
               </div>
             ) : (

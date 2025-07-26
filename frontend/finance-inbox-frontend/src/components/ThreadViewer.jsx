@@ -7,6 +7,7 @@ import { cn } from '../lib/utils'
 import axios from 'axios'
 import { API_ENDPOINTS } from '../config/api'
 import { useAuth } from '../contexts/AuthContext'
+import EmailContentViewer from './EmailContentViewer'
 
 const ThreadViewer = ({ thread, onThreadUpdate }) => {
   const [fullThread, setFullThread] = useState(null)
@@ -366,12 +367,12 @@ const EmailCard = ({ email, isLatest, isExpanded, onToggleExpand, onReply }) => 
             </div>
             
             {email.body ? (
-              <div className="prose prose-sm max-w-none">
-                {email.body.html ? (
-                  <div dangerouslySetInnerHTML={{ __html: email.body.html }} />
-                ) : (
-                  <div className="whitespace-pre-wrap">{email.body.text}</div>
-                )}
+              <div className="fi-thread-email-content">
+                <EmailContentViewer
+                  htmlContent={email.body.html}
+                  textContent={email.body.text}
+                  activeTab={email.body.html ? 'html' : 'text'}
+                />
               </div>
             ) : (
               <div className="text-muted-foreground italic">
