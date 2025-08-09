@@ -10,8 +10,9 @@ import { API_ENDPOINTS } from '../config/api'
 
 const REFRESH_INTERVAL = 60000 // 1 minute
 
-const Inbox = () => {
+const Inbox = ({ activeFilters = [], onFilterChange }) => {
   const [threads, setThreads] = useState([])
+  const [filteredThreads, setFilteredThreads] = useState([])
   const [selectedThread, setSelectedThread] = useState(null)
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -35,6 +36,23 @@ const Inbox = () => {
       }
     }
   }, [])
+
+  // Filter threads when activeFilters or threads change
+  useEffect(() => {
+    if (activeFilters.length === 0) {
+      setFilteredThreads(threads)
+    } else {
+      const filtered = threads.filter(thread => {
+        if (!thread.emails || thread.emails.length === 0) return false
+        
+        // Check if any email in the thread matches any of the active filters
+        return thread.emails.some(email => 
+          email.category && activeFilters.includes(email.category)
+        )
+      })
+      setFilteredThreads(filtered)
+    }
+  }, [threads, activeFilters])
 
   const loadThreads = async (silent = false) => {
     if (!silent) setLoading(true)
@@ -98,17 +116,41 @@ const Inbox = () => {
           headers: getAuthHeaders()
         })
         
-        // Update the thread in the list to reflect read status
-        setAllThreads(prevThreads => 
+        // Update the thread in both threads arrays to reflect read status
+        const updateThread = (prevThreads) => 
           prevThreads.map(t => 
             t.thread_id === thread.thread_id 
               ? { ...t, unread_count: 0, is_unread: false }
               : t
           )
-        )
+        
+        setThreads(updateThread)
+        setFilteredThreads(updateThread)
       } catch (error) {
         console.error('Error marking thread as read:', error)
       }
+    }
+  }
+
+  const getFilterStatusText = () => {
+    if (activeFilters.length === 0) {
+      return 'All emails'
+    } else if (activeFilters.length === 1) {
+      const categoryNames = {
+        'CLIENT_COMMUNICATION': 'Client Communication',
+        'MARKET_RESEARCH': 'Market Research',
+        'REGULATORY_COMPLIANCE': 'Compliance',
+        'FINANCIAL_REPORTING': 'Financial Reporting',
+        'TRANSACTION_ALERTS': 'Transactions',
+        'INTERNAL_OPERATIONS': 'Internal Operations',
+        'VENDOR_SERVICES': 'Vendor Services',
+        'MARKETING_SALES': 'Marketing & Sales',
+        'EDUCATIONAL_CONTENT': 'Educational Content',
+        'OTHER': 'Other'
+      }
+      return categoryNames[activeFilters[0]] || activeFilters[0]
+    } else {
+      return `${activeFilters.length} categories`
     }
   }
 
@@ -118,7 +160,14 @@ const Inbox = () => {
       <div className="border-b px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="fi-inbox-header-content flex items-center gap-4">
-            <h1 className="fi-inbox-title text-2xl font-bold">Inbox</h1>
+            <div>
+              <h1 className="fi-inbox-title text-2xl font-bold">Inbox</h1>
+              {activeFilters.length > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Filtered by: {getFilterStatusText()}
+                </p>
+              )}
+            </div>
             
             {/* New email notification */}
             {newEmailCount > 0 && (
@@ -168,10 +217,11 @@ const Inbox = () => {
         <div className="w-1/3 border-r">
           <Card className="h-full rounded-none border-0">
             <ThreadList
-              threads={threads}
+              threads={filteredThreads}
               selectedThread={selectedThread}
               onThreadSelect={handleThreadSelect}
               loading={loading}
+              activeFilters={activeFilters}
             />
           </Card>
         </div>
@@ -189,7 +239,9 @@ const Inbox = () => {
       <div className="border-t px-6 py-2 text-xs text-muted-foreground">
         <div className="flex items-center justify-between">
           <div>
-            {threads.length > 0 ? (
+            {activeFilters.length > 0 ? (
+              `${filteredThreads.length} of ${threads.length} threads shown (${filteredThreads.reduce((sum, thread) => sum + thread.email_count, 0)} emails)`
+            ) : threads.length > 0 ? (
               `${threads.length} threads loaded (${threads.reduce((sum, thread) => sum + thread.email_count, 0)} total emails)`
             ) : (
               'No threads'
