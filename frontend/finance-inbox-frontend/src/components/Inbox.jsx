@@ -99,7 +99,7 @@ const Inbox = () => {
         })
         
         // Update the thread in the list to reflect read status
-        setThreads(prevThreads => 
+        setAllThreads(prevThreads => 
           prevThreads.map(t => 
             t.thread_id === thread.thread_id 
               ? { ...t, unread_count: 0, is_unread: false }

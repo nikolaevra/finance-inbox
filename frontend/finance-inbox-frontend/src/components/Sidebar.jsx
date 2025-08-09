@@ -1,10 +1,11 @@
 import React, { useState } from 'react'
-import { cn } from '../lib/utils'
+import { clsx } from 'clsx'
 import { Inbox, Settings, Mail, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from './ui/button'
 
 const Sidebar = ({ activeSection, onSectionChange }) => {
   const [isCollapsed, setIsCollapsed] = useState(false)
+
   const navigationItems = [
     {
       id: 'inbox',
@@ -29,7 +30,7 @@ const Sidebar = ({ activeSection, onSectionChange }) => {
     return (
       <button
         onClick={() => onClick(item.id)}
-        className={cn(
+        className={clsx(
           "w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors",
           "hover:bg-accent hover:text-accent-foreground",
           isActive && "bg-accent text-accent-foreground font-medium",
@@ -44,12 +45,12 @@ const Sidebar = ({ activeSection, onSectionChange }) => {
   }
 
   return (
-    <div className={cn(
+    <div className={clsx(
       "bg-background border-r flex flex-col h-full transition-all duration-300",
       isCollapsed ? "w-16" : "w-64"
     )}>
       {/* Header */}
-      <div className={cn(
+      <div className={clsx(
         "border-b flex items-center justify-between",
         isCollapsed ? "p-3" : "p-6"
       )}>
@@ -62,7 +63,7 @@ const Sidebar = ({ activeSection, onSectionChange }) => {
           variant="ghost"
           size="icon"
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className={cn(
+          className={clsx(
             "h-8 w-8 flex-shrink-0",
             isCollapsed && "ml-0"
           )}
@@ -76,7 +77,7 @@ const Sidebar = ({ activeSection, onSectionChange }) => {
       </div>
 
       {/* Navigation Items */}
-      <div className={cn(
+      <div className={clsx(
         "flex-1",
         isCollapsed ? "p-2" : "p-4"
       )}>
@@ -93,7 +94,7 @@ const Sidebar = ({ activeSection, onSectionChange }) => {
       </div>
 
       {/* Settings at Bottom */}
-      <div className={cn(
+      <div className={clsx(
         "border-t",
         isCollapsed ? "p-2" : "p-4"
       )}>

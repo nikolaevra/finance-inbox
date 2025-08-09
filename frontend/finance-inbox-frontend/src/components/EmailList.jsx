@@ -2,7 +2,7 @@ import React from 'react'
 import { Card } from './ui/card'
 import { Badge } from './ui/badge'
 import { Paperclip, Star, AlertCircle } from 'lucide-react'
-import { cn } from '../lib/utils'
+import { clsx } from 'clsx'
 
 const EmailList = ({ emails, selectedEmail, onEmailSelect, loading }) => {
   if (loading) {
@@ -48,7 +48,7 @@ const EmailList = ({ emails, selectedEmail, onEmailSelect, loading }) => {
 const EmailListItem = ({ email, isSelected, onClick }) => {
   return (
     <div
-      className={cn(
+      className={clsx(
         "p-4 cursor-pointer hover:bg-accent transition-colors",
         isSelected && "bg-accent",
         email.is_unread && "border-l-2 border-l-blue-500"
@@ -58,7 +58,7 @@ const EmailListItem = ({ email, isSelected, onClick }) => {
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <div className={cn(
+            <div className={clsx(
               "font-medium text-sm truncate",
               email.is_unread && "font-semibold"
             )}>
@@ -77,7 +77,7 @@ const EmailListItem = ({ email, isSelected, onClick }) => {
             </div>
           </div>
           
-          <div className={cn(
+          <div className={clsx(
             "text-sm mb-1 truncate",
             email.is_unread ? "font-medium" : "text-muted-foreground"
           )}>

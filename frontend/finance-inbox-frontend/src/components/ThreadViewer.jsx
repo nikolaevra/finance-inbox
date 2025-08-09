@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader } from './ui/card'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Paperclip, Star, AlertCircle, Reply, ChevronUp, ChevronDown, Send, X, Plus, Minus, CheckCircle, AlertTriangle } from 'lucide-react'
-import { cn } from '../lib/utils'
+import { clsx } from 'clsx'
 import axios from 'axios'
 import { API_ENDPOINTS } from '../config/api'
 import { useAuth } from '../contexts/AuthContext'
@@ -291,7 +291,7 @@ const ThreadViewer = ({ thread, onThreadUpdate }) => {
 
 const EmailCard = ({ email, isLatest, isExpanded, onToggleExpand, onReply }) => {
   return (
-    <Card className={cn(
+    <Card className={clsx(
       "transition-all duration-200",
       email.is_unread && "border-l-4 border-l-blue-500",
       isLatest && "ring-1 ring-primary/20"
@@ -303,7 +303,7 @@ const EmailCard = ({ email, isLatest, isExpanded, onToggleExpand, onReply }) => 
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <div className={cn(
+              <div className={clsx(
                 "font-medium text-sm",
                 email.is_unread && "font-semibold"
               )}>
@@ -461,7 +461,7 @@ const ReplyForm = ({ replyData, setReplyData, onSend, onCancel, sending, success
               ...replyData,
               to: e.target.value.split(',').map(email => email.trim()).filter(Boolean)
             })}
-            className={cn(
+            className={clsx(
               "w-full px-3 py-2 border rounded-md text-sm",
               !hasValidRecipients() && replyData.to.length > 0 ? "border-red-300" : "border-gray-300"
             )}
@@ -578,7 +578,7 @@ const ReplyForm = ({ replyData, setReplyData, onSend, onCancel, sending, success
             <Button 
               onClick={onSend} 
               disabled={!canSend()}
-              className={cn(
+              className={clsx(
                 success && "bg-green-600 hover:bg-green-700"
               )}
               title="Send reply (Ctrl+Enter)"
