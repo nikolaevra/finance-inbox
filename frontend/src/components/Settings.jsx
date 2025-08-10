@@ -66,6 +66,12 @@ const Settings = () => {
       fetchConnections()
       // Clear URL parameters
       window.history.replaceState({}, document.title, window.location.pathname)
+    } else if (success === 'slack_connected') {
+      console.log('Slack connected successfully!')
+      // Refresh connections to show updated status
+      fetchConnections()
+      // Clear URL parameters
+      window.history.replaceState({}, document.title, window.location.pathname)
     } else if (error) {
       console.error('OAuth error:', error)
       setError(`Connection failed: ${error}`)
@@ -119,6 +125,41 @@ const Settings = () => {
       await fetchConnections()
     } catch (error) {
       console.error('Error disconnecting Gmail:', error)
+    }
+  }
+
+  const handleConnectSlack = async () => {
+    try {
+      const response = await axios.get(API_ENDPOINTS.SLACK_AUTH.AUTHORIZE, {
+        headers: getAuthHeaders()
+      })
+      
+      if (response.data.authorization_url) {
+        // Redirect to Slack OAuth
+        window.location.href = response.data.authorization_url
+      } else {
+        console.error('No authorization URL received')
+      }
+    } catch (error) {
+      console.error('Error getting Slack authorization URL:', error)
+      // Handle error - maybe show a toast notification
+    }
+  }
+
+  const handleDisconnectSlack = async () => {
+    try {
+      const response = await axios.post(
+        API_ENDPOINTS.SETTINGS.DISCONNECT('slack'),
+        {},
+        { headers: getAuthHeaders() }
+      )
+      
+      console.log('Slack disconnected:', response.data)
+      
+      // Refresh connections after disconnect
+      await fetchConnections()
+    } catch (error) {
+      console.error('Error disconnecting Slack:', error)
     }
   }
 
@@ -388,7 +429,7 @@ const Settings = () => {
               )}
 
                   {/* Slack Integration Card */}
-                  <div className={`border rounded-lg p-4 ${!isProviderConnected('slack') ? 'opacity-60' : ''}`}>
+                  <div className="border rounded-lg p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <div className="flex items-center justify-center w-12 h-12 bg-purple-50 rounded-lg">
@@ -412,21 +453,32 @@ const Settings = () => {
                                 Refresh Required
                               </Badge>
                             ) : (
-                              <Badge variant="secondary" className="bg-orange-100 text-orange-800 border-orange-200">
-                                Coming Soon
+                              <Badge variant="secondary" className="bg-gray-100 text-gray-800 border-gray-200">
+                                <XCircle className="h-3 w-3 mr-1" />
+                                Disconnected
                               </Badge>
                             )}
                           </div>
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          disabled={!isProviderConnected('slack')}
-                        >
-                          {isProviderConnected('slack') ? 'Disconnect' : 'Connect'}
-                        </Button>
+                        {isProviderConnected('slack') ? (
+                          <Button 
+                            variant="destructive" 
+                            size="sm"
+                            onClick={handleDisconnectSlack}
+                          >
+                            Disconnect
+                          </Button>
+                        ) : (
+                          <Button 
+                            variant="default" 
+                            size="sm"
+                            onClick={handleConnectSlack}
+                          >
+                            Connect
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>

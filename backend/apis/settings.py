@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from services.google_service import GoogleService
+from services.slack_service import SlackService
 from services.auth_service import get_current_user_profile
 from services.connections_service import connections_service
 from models import ConnectionProvider
@@ -32,7 +33,7 @@ def disconnect_provider(provider: str, current_user_profile: dict = Depends(get_
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid provider: {provider}. Supported providers: gmail"
+            detail=f"Invalid provider: {provider}. Supported providers: gmail, slack"
         )
     
     # Handle Gmail disconnection
@@ -45,6 +46,22 @@ def disconnect_provider(provider: str, current_user_profile: dict = Depends(get_
             "provider": provider,
             "details": result
         }
+    
+    # Handle Slack disconnection
+    if connection_provider == ConnectionProvider.SLACK:
+        success = connections_service.disconnect_slack_connection(
+            user_id=current_user_profile["id"]
+        )
+        if success:
+            return {
+                "message": f"Successfully disconnected from {provider}",
+                "provider": provider
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No active connection found for {provider}"
+            )
     
     # For other providers, just update status
     success = connections_service.disconnect_provider(

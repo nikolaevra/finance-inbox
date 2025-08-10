@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 import asyncio
 import logging
 from apis.connect_gmail import router as gmail_router
+from apis.connect_slack import router as slack_router
+from apis.slack_api import router as slack_api_router
 from apis.auth import router as auth_router
 from apis.inbox import router as inbox_router
 from apis.settings import router as settings_router
@@ -50,6 +52,8 @@ app.add_middleware(
 app.include_router(auth_router)   # Authentication routes (/auth/*)
 app.include_router(inbox_router)  # Inbox routes (/inbox/*)
 app.include_router(gmail_router)  # Gmail OAuth routes (/google-auth/*)
+app.include_router(slack_router)  # Slack OAuth routes (/slack-auth/*)
+app.include_router(slack_api_router)  # Slack API routes (/slack-api/*)
 app.include_router(settings_router)  # Settings routes (/settings/*)
 app.include_router(prompt_settings_router)  # Prompt settings routes (/settings/prompt/*)
 

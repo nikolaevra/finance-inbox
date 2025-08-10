@@ -39,6 +39,14 @@ export const API_ENDPOINTS = {
     CALLBACK: `${API_BASE_URL}/google-auth/callback`,
     STATUS: `${API_BASE_URL}/google-auth/status`,
     CLEAR: `${API_BASE_URL}/google-auth/clear`,
+  },
+  
+  // Slack OAuth endpoints
+  SLACK_AUTH: {
+    AUTHORIZE: `${API_BASE_URL}/slack-auth/`,
+    CALLBACK: `${API_BASE_URL}/slack-auth/callback`,
+    STATUS: `${API_BASE_URL}/slack-auth/status`,
+    DISCONNECT: `${API_BASE_URL}/slack-auth/disconnect`,
   }
 }
 

@@ -3,7 +3,7 @@
 
 -- Create enum types for connection status and provider
 CREATE TYPE connection_status AS ENUM ('connected', 'disconnected', 'refresh_required');
-CREATE TYPE connection_provider AS ENUM ('gmail');
+CREATE TYPE connection_provider AS ENUM ('gmail', 'slack');
 
 -- Create connections table
 CREATE TABLE connections (

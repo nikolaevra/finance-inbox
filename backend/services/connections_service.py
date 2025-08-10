@@ -186,5 +186,69 @@ class ConnectionsService:
             logger.error(f"❌ Error disconnecting Gmail connection: {str(e)}")
             return False
 
+    def create_slack_connection_after_oauth(
+        self, 
+        user_id: str, 
+        oauth_token_id: Optional[str] = None,
+        team_info: Optional[dict] = None,
+        scopes: Optional[List[str]] = None
+    ) -> bool:
+        """Create Slack connection record after successful OAuth"""
+        try:
+            logger.info(f"🔗 Creating Slack connection record for user {user_id}")
+            
+            metadata = {
+                "scopes": scopes or [],
+                "connected_at": datetime.now(timezone.utc).isoformat()
+            }
+            
+            if team_info:
+                metadata.update({
+                    "team_id": team_info.get("id"),
+                    "team_name": team_info.get("name"),
+                    "team_domain": team_info.get("domain")
+                })
+            
+            # Create/update connection record
+            connection = self.create_or_update_connection(
+                user_id=user_id,
+                provider=ConnectionProvider.SLACK,
+                status=ConnectionStatus.CONNECTED,
+                oauth_token_id=oauth_token_id,
+                metadata=metadata
+            )
+            
+            if connection:
+                logger.info(f"✅ Successfully created Slack connection record")
+                return True
+            else:
+                logger.error(f"❌ Failed to create Slack connection record")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Error creating Slack connection record: {str(e)}")
+            return False
+
+    def disconnect_slack_connection(self, user_id: str) -> bool:
+        """Disconnect Slack connection and clear oauth token reference"""
+        try:
+            logger.info(f"🔌 Disconnecting Slack connection for user {user_id}")
+            
+            success = self.disconnect_provider(
+                user_id=user_id,
+                provider=ConnectionProvider.SLACK
+            )
+            
+            if success:
+                logger.info(f"✅ Successfully disconnected Slack connection")
+            else:
+                logger.warning(f"⚠️ No Slack connection found to disconnect")
+                
+            return success
+                
+        except Exception as e:
+            logger.error(f"❌ Error disconnecting Slack connection: {str(e)}")
+            return False
+
 # Initialize connections service
 connections_service = ConnectionsService() 

@@ -12,6 +12,7 @@ class ConnectionStatus(str, Enum):
 
 class ConnectionProvider(str, Enum):
     GMAIL = "gmail"
+    SLACK = "slack"
 
 @dataclass
 class UserAuthData:
