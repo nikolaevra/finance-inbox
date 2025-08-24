@@ -232,8 +232,8 @@ class GoogleService:
             existing_token = self._get_tokens_from_db()
             if existing_token:
                 logger.info(f"🔄 Updating existing tokens for user {self.internal_user_id}")
-                result = self.supabase.table("oauth_tokens").update(token_data).eq("id", existing_token.id).execute()
-                oauth_token_id = existing_token.id
+                result = self.supabase.table("oauth_tokens").update(token_data).eq("id", str(existing_token.id)).execute()
+                oauth_token_id = str(existing_token.id)
             else:
                 logger.info(f"➕ Inserting new tokens for user {self.internal_user_id}")
                 result = self.supabase.table("oauth_tokens").insert(token_data).execute()
@@ -278,7 +278,7 @@ class GoogleService:
                 return True  # Nothing to delete is success
             
             # Delete the OAuth token
-            result = self.supabase.table("oauth_tokens").delete().eq("id", existing_token.id).execute()
+            result = self.supabase.table("oauth_tokens").delete().eq("id", str(existing_token.id)).execute()
             
             # Clear the oauth_token_id from the connection
             self.supabase.table("connections").update({
@@ -996,6 +996,8 @@ class GoogleService:
         tokens = self._get_tokens_from_db()
         if not tokens:
             logger.warning(f"❌ No tokens found for user {self.internal_user_id}")
+            # Mark connection disconnected on first failure
+            self._mark_gmail_connection_disconnected_if_needed()
             return False
         
         # Check if token is expired or expires in the next 5 minutes
@@ -1016,6 +1018,8 @@ class GoogleService:
         # Token needs refresh - NOW check if we have a refresh token
         if not tokens.refresh_token:
             logger.error(f"❌ Token expired/expiring but no refresh token available for user {self.internal_user_id}")
+            # Mark connection disconnected on first failure
+            self._mark_gmail_connection_disconnected_if_needed()
             return False
             
         logger.info(f"🔄 Token needs refresh (expires within 5 minutes), refreshing now...")
@@ -1050,10 +1054,14 @@ class GoogleService:
                 return True
             else:
                 logger.error(f"❌ Failed to save refreshed token for user {self.internal_user_id}")
+                # Mark connection disconnected on failure to persist refreshed token
+                self._mark_gmail_connection_disconnected_if_needed()
                 return False
             
         except Exception as e:
             logger.error(f"❌ Failed to refresh token for user {self.internal_user_id}: {str(e)}")
+            # Mark connection disconnected on first failure
+            self._mark_gmail_connection_disconnected_if_needed()
             return False
 
     def get_token_info(self) -> dict:
@@ -1074,6 +1082,25 @@ class GoogleService:
             "provider": tokens.provider,
             "internal_user_id": str(self.internal_user_id)  # Use the service's internal_user_id instead
         }
+
+    def _mark_gmail_connection_disconnected_if_needed(self) -> None:
+        """Set Gmail connection status to disconnected if it's not already.
+        This runs when a token refresh failure occurs for the first time for a user.
+        """
+        try:
+            if not self.internal_user_id:
+                return
+            # Import here to avoid circular imports
+            from services.connections_service import connections_service
+            from models import ConnectionProvider
+            # Idempotently set connection to disconnected and clear oauth_token_id
+            connections_service.disconnect_provider(
+                user_id=str(self.internal_user_id),
+                provider=ConnectionProvider.GMAIL
+            )
+            logger.info(f"🔌 Marked Gmail connection disconnected for user {self.internal_user_id}")
+        except Exception as e:
+            logger.error(f"❌ Error marking Gmail connection disconnected: {str(e)}")
 
     def get_single_email_from_db(self, email_id: str) -> Optional[dict]:
         """Get a single email from database by gmail_id with full body content"""
